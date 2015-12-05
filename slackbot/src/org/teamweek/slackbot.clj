@@ -1,8 +1,14 @@
 (ns org.teamweek.slackbot
   (:require [clojure.core.async :as async]
+            [datomic.api :as d]
             [aleph.http :as http]
             [manifold.stream :as stream]
             [cheshire.core :as json]
+            [clojurewerkz.quartzite.scheduler :as scheduler]
+            [clojurewerkz.quartzite.jobs :as jobs :refer (defjob)]
+            [clojurewerkz.quartzite.triggers :as triggers]
+            [clojurewerkz.quartzite.schedule.cron :as cron]
+            [clojurewerkz.quartzite.schedule.simple :as simple-scheduler] ;; TODO remove
             [byte-streams])
   (:gen-class))
 
@@ -123,6 +129,7 @@
                (conj question-answers
                      {:ts (java.util.Date.)
                       :team (:name (:team conn))
+                      :domain (:domain (:team conn))
                       :user username
                       :question question
                       :answer (:text (async/<!! answer-chan))}))
@@ -131,6 +138,41 @@
     (async/unsub dm-pub username answer-chan)
     (async/close! answer-chan)
     qas))
+
+
+(defjob NoOpJob [ctx]
+  (comment "Does nothing!"))
+
+(defjob QuestionnaireJob [ctx]
+  )
+
+(defn schedule-questionnaire-job [scheduler domain cron-string]
+  (let [job (jobs/build
+             (jobs/of-type QuestionnaireJob)
+             (jobs/using-job-data {:domain domain})
+             (jobs/with-identity (jobs/key (str "jobs." domain))))
+        trigger (triggers/build
+                 (triggers/with-identity (triggers/key (str "triggers." domain)))
+                 (triggers/with-schedule
+                   (cron/schedule
+                    (cron/cron-schedule cron-string))))]
+    (scheduler/schedule scheduler job trigger)))
+
+(defn init-start-jobs [scheduler db]
+  (doseq [{:keys [domain schedule]} (d/q '[:find (pull ?team [:team/domain :team/schedule])
+                                           :where
+                                           [?team :team/domain]]
+                                         db)]
+    (schedule-questionnaire-job scheduler
+                                domain
+                                schedule)))
+
+(defn -main [db-uri]
+  (let [scheduler (scheduler/start (scheduler/initialize))
+        db-conn (d/connect db-uri)
+        db (d/db db-conn)]
+    (init-start-jobs scheduler db))
+  (println "Hello world!"))
 
 (comment
   (def conn (connect slack-token))
@@ -146,6 +188,3 @@
       (send-to-user! conn "jonas" (str "You answered: " (pr-str answers)))))
 
   )
-
-(defn -main [& args]
-  (println "Hello world!"))
