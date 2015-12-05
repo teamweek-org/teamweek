@@ -20,12 +20,21 @@
                           (json/generate-string {:id (rand-int 1e6)
                                                  :type "ping"})))))
 
+(defn find-username [conn user-id]
+  (if-let [username (some #(if (= (:id %) user-id)
+                             (:name %))
+                          (:users conn))]
+    username
+    (throw (ex-info "No such user" {:user-id user-id}))))
+
 (defn route-messages [conn incoming-messages]
   (future (while true
             (let [msg (json/parse-string @(stream/take! (:ws-conn conn)) true)]
               (condp = (:type msg)
                 "message" (when-not (= (:user msg) (:id (:self conn)))
-                            (async/put! incoming-messages msg))
+                            (async/put! incoming-messages
+                                        (assoc msg
+                                               :username (find-username conn (:user msg)))))
                 (do #_ignore))))))
 
 (defn websocket-client [url incoming-messages]
@@ -34,8 +43,9 @@
     (when-not (= first-msg {"type" "hello"})
       (throw (ex-info "Unable to connect" first-msg)))
     (keep-alive conn)
-
     conn))
+
+
 
 (defn connect [token]
   (let [conn-data (-> (str "https://slack.com/api/rtm.start?token=" token)
@@ -45,11 +55,16 @@
                       byte-streams/to-string
                       (json/parse-string true))
         incoming-messages (async/chan)
+        dm-pub (async/pub incoming-messages
+                          (fn topic-fn [msg]
+                            (:username msg)))
         ws-conn (websocket-client (:url conn-data)
                                   incoming-messages)
+
         conn (assoc conn-data
                     :ws-conn ws-conn
-                    :incoming-messages incoming-messages)]
+                    :incoming-messages incoming-messages
+                    :dm-pub dm-pub)]
     (route-messages conn incoming-messages)
     conn))
 
@@ -84,31 +99,42 @@
                                        :channel (find-channel-id conn channel)
                                        :text msg})))
 
-(defn find-username [conn user-id]
-  (if-let [username (some #(if (= (:id %) user-id)
-                             (:name %))
-                          (:users conn))]
-    username
-    (throw (ex-info "No such user" {:user-id user-id}))))
+
+
+
+(defn send-questionnaire
+  [conn username questions]
+  (send-to-user! conn username
+                 (format "Greetings %s. I have a few questions for you." username))
+  (let [dm-pub (:dm-pub conn)
+        answer-chan (async/chan)
+        dm-sub (async/sub dm-pub username answer-chan)
+        qas (reduce
+             (fn [question-answers question]
+               (send-to-user! conn username question)
+               (conj question-answers
+                     {:ts (java.util.Date.)
+                      :team (:name (:team conn))
+                      :user username
+                      :question question
+                      :answer (:text (async/<!! answer-chan))}))
+             []
+             questions)]
+    (async/unsub dm-pub username answer-chan)
+    (async/close! answer-chan)
+    qas))
 
 (comment
   (def conn (connect slack-token))
 
   conn
 
-  (send-to-user! conn "ivan" "Send me a message!")
+  (send-to-user! conn "jonas" "Send me a message!")
 
 
   (async/thread
-    (loop [msg (async/<!! (:incoming-messages conn))]
-      (when msg
-        (let [user-id (:user msg)
-              _ (assert (not= (:user msg) (:id (:self conn))))
-              username (find-username conn user-id)
-              dm? (.startsWith (:channel msg) "D")]
-          (if dm?
-            (send-to-user! conn username (format "Hi %s! You said \"%s\"" username (:text msg))))
-          (recur (async/<!! (:incoming-messages conn)))))))
+    (let [answers (send-questionnaire conn "jonas" ["How are you today?" "What are your plans for tomorrow?"])]
+      (send-to-user! conn "jonas" (str "You answered: " (pr-str answers)))))
 
   )
 
