@@ -141,8 +141,21 @@
 
 (defn submit-answers [db-conn domain user answers]
   ;; TODO insert into datomic db
-  (prn answers)
-  )
+  (let [db (d/db db-conn)
+        user-eid (d/q '[:find ?member .
+                        :in $ domain user
+                        :where
+                        [?team :team/domain domain]
+                        [?team :team/members ?member]
+                        [?member :member/name ?user]]
+                      db domain user)
+        tx (for [answer answers]
+             {:db/id (d/tempid :db.part/user)
+              :answer/author user-eid
+              :answer/text (:answer answer)
+              :answer/ts (:ts answer)
+              :_question/answers (:question answer)})]
+    @(d/transact db-conn tx)))
 
 (defjob QuestionnaireJob [{:keys [domain db-conn]}]
   (let [db (d/db db-conn)
@@ -154,18 +167,16 @@
                      [?team :team/members ?member]
                      [?member :member/name ?name]]
                    db domain)
-        questions (d/q '[:find [?text ...]
+        questions (d/q '[:find (pull ?question [:db/id :question/text])
                          :in $ ?domain
                          :where
                          [?team :team/domain ?domain]
-                         [?team :team/questions ?question]
-                         [?question :question/text ?text]]
+                         [?team :team/questions ?question]]
                        db domain)
         conn (when (and token
                         (not-empty users)
                         (not-empty questions))
                (connect token))]
-
     (if conn
       ;; TODO in parallell, but the job is not finished before all has answered/timeout
       (doseq [user users]
@@ -176,10 +187,11 @@
           (println "Users" users)
           (println "Questions" questions)))))
 
-(defn schedule-questionnaire-job [scheduler domain cron-string]
+(defn schedule-questionnaire-job [scheduler db-conn domain cron-string]
   (let [job (jobs/build
              (jobs/of-type QuestionnaireJob)
-             (jobs/using-job-data {:domain domain})
+             (jobs/using-job-data {:domain domain
+                                   :db-conn db-conn})
              (jobs/with-identity (jobs/key (str "jobs." domain))))
         trigger (triggers/build
                  (triggers/with-identity (triggers/key (str "triggers." domain)))
@@ -188,12 +200,14 @@
                     (cron/cron-schedule cron-string))))]
     (scheduler/schedule scheduler job trigger)))
 
-(defn init-start-jobs [scheduler db]
-  (doseq [{:keys [domain schedule]} (d/q '[:find (pull ?team [:team/domain :team/schedule])
+(defn init-start-jobs [scheduler db-conn]
+  (doseq [db (d/db db-conn)
+          {:keys [domain schedule]} (d/q '[:find (pull ?team [:team/domain :team/schedule])
                                            :where
                                            [?team :team/domain]]
                                          db)]
     (schedule-questionnaire-job scheduler
+                                db-conn
                                 domain
                                 schedule)))
 
@@ -242,9 +256,8 @@
 
 (defn -main [db-uri]
   (let [scheduler (scheduler/start (scheduler/initialize))
-        db-conn (d/connect db-uri)
-        db (d/db db-conn)]
-    (init-start-jobs scheduler db)
+        db-conn (d/connect db-uri)]
+    (init-start-jobs scheduler db-conn)
     (listen-for-team-updates scheduler db-conn)))
 
 (comment
@@ -300,6 +313,7 @@
 
   (d/transact db-conn [[:db/add [:team/domain "abc"] :team/schedule "* * F * *"]])
 
+  (d/pull (d/db db-conn) [:team/domain :team/schedule] [:team/domain "abc"])
 
 
 
