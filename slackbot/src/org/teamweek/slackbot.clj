@@ -20,12 +20,12 @@
                           (json/generate-string {:id (rand-int 1e6)
                                                  :type "ping"})))))
 
-(defn route-messages [ws-conn incoming-messages]
+(defn route-messages [conn incoming-messages]
   (future (while true
-            (let [msg (json/parse-string @(stream/take! ws-conn) true)]
+            (let [msg (json/parse-string @(stream/take! (:ws-conn conn)) true)]
               (condp = (:type msg)
-                "message" (do (println "OK")
-                              (async/put! incoming-messages msg))
+                "message" (when-not (= (:user msg) (:id (:self conn)))
+                            (async/put! incoming-messages msg))
                 (do #_ignore))))))
 
 (defn websocket-client [url incoming-messages]
@@ -34,7 +34,7 @@
     (when-not (= first-msg {"type" "hello"})
       (throw (ex-info "Unable to connect" first-msg)))
     (keep-alive conn)
-    (route-messages conn incoming-messages)
+
     conn))
 
 (defn connect [token]
@@ -46,10 +46,12 @@
                       (json/parse-string true))
         incoming-messages (async/chan)
         ws-conn (websocket-client (:url conn-data)
-                                  incoming-messages)]
-    (assoc conn-data
-           :ws-conn ws-conn
-           :incoming-messages incoming-messages)))
+                                  incoming-messages)
+        conn (assoc conn-data
+                    :ws-conn ws-conn
+                    :incoming-messages incoming-messages)]
+    (route-messages conn incoming-messages)
+    conn))
 
 (defn find-user-dm-id [conn user]
   (let [user-id (some #(if (= (:name %) user)
@@ -82,16 +84,31 @@
                                        :channel (find-channel-id conn channel)
                                        :text msg})))
 
+(defn find-username [conn user-id]
+  (if-let [username (some #(if (= (:id %) user-id)
+                             (:name %))
+                          (:users conn))]
+    username
+    (throw (ex-info "No such user" {:user-id user-id}))))
+
 (comment
   (def conn (connect slack-token))
 
-  (send-to-user! conn "jonas" "no need to leave emacs ;)")
+  conn
+
+  (send-to-user! conn "ivan" "Send me a message!")
+
 
   (async/thread
     (loop [msg (async/<!! (:incoming-messages conn))]
       (when msg
-        (prn msg)
-        (recur (async/<!! (:incoming-messages conn))))))
+        (let [user-id (:user msg)
+              _ (assert (not= (:user msg) (:id (:self conn))))
+              username (find-username conn user-id)
+              dm? (.startsWith (:channel msg) "D")]
+          (if dm?
+            (send-to-user! conn username (format "Hi %s! You said \"%s\"" username (:text msg))))
+          (recur (async/<!! (:incoming-messages conn)))))))
 
   )
 
