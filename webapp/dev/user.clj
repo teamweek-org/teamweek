@@ -9,7 +9,10 @@
             [reloaded.repl :refer [system init start stop go reset]]
             [ring.middleware.stacktrace :refer [wrap-stacktrace]]
             [org.teamweek.webapp.config :as config]
-            [org.teamweek.webapp.system :as system]))
+            [org.teamweek.webapp.system :as system]
+            [clj-http.client :as http]
+            [datomic.api :as d]
+            [cheshire.core :as json]))
 
 (def dev-config
   {:app {:middleware [wrap-stacktrace]}})
@@ -32,3 +35,18 @@
   (load "local"))
 
 (reloaded.repl/set-init! new-system)
+
+(comment
+
+  (d/create-database "datomic:free://localhost:4334/teamweek")
+
+  (http/put "http://localhost:9200/team1" {:body (slurp (io/resource "mappings.json"))})
+
+  (http/post "http://localhost:9200/team1/answer/" {:body (json/encode {:text "#teamweek rocks!" :created (java.util.Date.) :member "ivan"})})
+
+  (http/get "http://localhost:9200/team1/_search")
+
+  (http/get "http://localhost:9200/team1/_search" {:body (json/encode {:query {:query_string {:analyze_wildcard "true"
+                                                                                             :query "#TEamWeEk"}}})})
+
+  )
