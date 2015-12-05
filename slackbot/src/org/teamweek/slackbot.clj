@@ -8,7 +8,6 @@
             [clojurewerkz.quartzite.jobs :as jobs :refer (defjob)]
             [clojurewerkz.quartzite.triggers :as triggers]
             [clojurewerkz.quartzite.schedule.cron :as cron]
-            [clojurewerkz.quartzite.schedule.simple :as simple-scheduler] ;; TODO remove
             [byte-streams])
   (:gen-class))
 
@@ -148,24 +147,34 @@
 (defjob QuestionnaireJob [{:keys [domain db-conn]}]
   (let [db (d/db db-conn)
         token (:team/token (d/entity db [:team/domain domain]))
-        users (d/q '[:find ?user
+        users (d/q '[:find [?name ...]
                      :in $ ?domain
                      :where
                      [?team :team/domain ?domain]
                      [?team :team/members ?member]
-                     [?member :user/name ?user]]
+                     [?member :member/name ?name]]
                    db domain)
-        questions (d/q '[:find ?question-text
+        questions (d/q '[:find [?text ...]
                          :in $ ?domain
                          :where
                          [?team :team/domain ?domain]
                          [?team :team/questions ?question]
-                         [?question :question/text ?question-text]])
-        conn (connect token)]
-    ;; TODO in parallell, but the job is not finished before all has answered/timeout
-    (doseq [user users]
-      (let [answers (send-questionnaire conn user questions)]
-        (submit-answers db-conn domain user answers)))))
+                         [?question :question/text ?text]]
+                       db domain)
+        conn (when (and token
+                        (not-empty users)
+                        (not-empty questions))
+               (connect token))]
+
+    (if conn
+      ;; TODO in parallell, but the job is not finished before all has answered/timeout
+      (doseq [user users]
+        (let [answers (send-questionnaire conn user questions)]
+          (submit-answers db-conn domain user answers)))
+      (do (println "Nothing to do")
+          (println "Token" token) ;; TODO proper logging!
+          (println "Users" users)
+          (println "Questions" questions)))))
 
 (defn schedule-questionnaire-job [scheduler domain cron-string]
   (let [job (jobs/build
@@ -188,12 +197,55 @@
                                 domain
                                 schedule)))
 
+(defn schedule-new [schduler db-before db-after]
+  (let [new-domains (d/q '[:find [?new-domains ...]
+                           :in $db-before $db-after
+                           :where
+                           [$db-after ?team :team/domain ?new-domains]
+                           [(missing? $db-before ?team :team/domain)]]
+                         db-before db-after)]
+    (prn "New domains:" new-domains)))
+
+(defn schedule-removed [scheduler db-before db-after]
+  (let [removed-domains (d/q '[:find [?removed-domains ...]
+                               :in $ $db-after
+                               :where
+                               [$ ?team :team/domain ?removed-domains]
+                               [(missing? $db-after ?team :team/domain)]]
+                             db-before db-after)]
+    (prn "Removed domains:" removed-domains)))
+
+(defn schedule-updates [scheduler db-before db-after]
+  (let [updated-crons (d/q '[:find ?domain ?schedule-after
+                             :in $db-before $db-after
+                             :where
+                             [$db-after  ?team :team/domain ?domain]
+                             [$db-before ?team :team/schedule ?schedule-before]
+                             [$db-after  ?team :team/schedule ?schedule-after]
+                             [(not= ?schedule-before ?schedule-after)]]
+                           db-before db-after)]
+    (prn "Updated crons:" updated-crons)))
+
+(defn listen-for-team-updates [scheduler db-conn]
+  (let [queue (d/tx-report-queue db-conn)]
+    (while true
+      (let [{:keys [db-before
+                    db-after
+                    tx-data]} (.take queue)]
+        ;; No figure out if we need to
+        ;; add/remove a scheduled job
+        ;; or update the cron job for some
+        (schedule-new scheduler db-before db-after)
+        (schedule-removed scheduler db-before db-after)
+        (schedule-updates scheduler db-before db-after)
+        (println "============================================")))))
+
 (defn -main [db-uri]
   (let [scheduler (scheduler/start (scheduler/initialize))
         db-conn (d/connect db-uri)
         db (d/db db-conn)]
-    (init-start-jobs scheduler db))
-  (println "Hello world!"))
+    (init-start-jobs scheduler db)
+    (listen-for-team-updates scheduler db-conn)))
 
 (comment
   (def conn (connect slack-token))
@@ -207,5 +259,48 @@
     (let [answers (send-questionnaire conn "jonas" ["How are you today?"
                                                     "What are your plans for tomorrow?"])]
       (send-to-user! conn "jonas" (str "You answered: " (pr-str answers)))))
+
+  ;; db stuff
+
+  (def db-uri "datomic:free://localhost:4334/teamweek")
+
+  (d/delete-database db-uri)
+  (d/create-database db-uri)
+
+  (def db-conn (d/connect db-uri))
+
+  (d/transact db-conn (read-string (slurp "../webapp/resources/schema.edn")))
+
+  (future (listen-for-team-updates nil db-conn))
+
+
+  (defn create-team [team-name slack-token schedule-string members questions]
+    {:db/id (d/tempid :db.part/user)
+     :team/domain team-name
+     :team/token slack-token
+     :team/schedule schedule-string
+     :team/members (for [[name email] members]
+                     {:member/name name
+                      :member/email email})
+     :team/questions (for [text questions]
+                       {:question/text text})})
+
+  (d/transact db-conn [(create-team "abc" "fdiosjfsodij" "* * * * *"
+                                    [["jonas" "jonas@gmail"]]
+                                    ["Who are you?"
+                                     "Where are you?"
+                                     "Where are you going?"])])
+
+  (d/transact db-conn [(create-team "def" "fdsoifjsidojf" "* * * * *"
+                                    [["ivan" "ivan@gmail"]
+                                     ["john" "doe@gmail"]]
+                                    ["What is your age?"])])
+
+  (d/transact db-conn [[:db.fn/retractEntity [:team/domain "def"]]])
+
+  (d/transact db-conn [[:db/add [:team/domain "abc"] :team/schedule "* * F * *"]])
+
+
+
 
   )
