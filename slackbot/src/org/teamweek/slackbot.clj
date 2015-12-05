@@ -27,11 +27,15 @@
     username
     (throw (ex-info "No such user" {:user-id user-id}))))
 
+(defn direct-message? [msg]
+  (.startsWith (:channel msg) "D"))
+
 (defn route-messages [conn incoming-messages]
   (future (while true
             (let [msg (json/parse-string @(stream/take! (:ws-conn conn)) true)]
               (condp = (:type msg)
-                "message" (when-not (= (:user msg) (:id (:self conn)))
+                "message" (when (and (not= (:user msg) (:id (:self conn)))
+                                     (direct-message? msg))
                             (async/put! incoming-messages
                                         (assoc msg
                                                :username (find-username conn (:user msg)))))
@@ -98,9 +102,6 @@
                                        :type "message"
                                        :channel (find-channel-id conn channel)
                                        :text msg})))
-
-
-
 
 (defn send-questionnaire
   [conn username questions]
