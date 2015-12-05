@@ -140,11 +140,32 @@
     qas))
 
 
-(defjob NoOpJob [ctx]
-  (comment "Does nothing!"))
-
-(defjob QuestionnaireJob [ctx]
+(defn submit-answers [db-conn domain user answers]
+  ;; TODO insert into datomic db
+  (prn answers)
   )
+
+(defjob QuestionnaireJob [{:keys [domain db-conn]}]
+  (let [db (d/db db-conn)
+        token (:team/token (d/entity db [:team/domain domain]))
+        users (d/q '[:find ?user
+                     :in $ ?domain
+                     :where
+                     [?team :team/domain ?domain]
+                     [?team :team/members ?member]
+                     [?member :user/name ?user]]
+                   db domain)
+        questions (d/q '[:find ?question-text
+                         :in $ ?domain
+                         :where
+                         [?team :team/domain ?domain]
+                         [?team :team/questions ?question]
+                         [?question :question/text ?question-text]])
+        conn (connect token)]
+    ;; TODO in parallell, but the job is not finished before all has answered/timeout
+    (doseq [user users]
+      (let [answers (send-questionnaire conn user questions)]
+        (submit-answers db-conn domain user answers)))))
 
 (defn schedule-questionnaire-job [scheduler domain cron-string]
   (let [job (jobs/build
