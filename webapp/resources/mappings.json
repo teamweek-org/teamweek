@@ -1,0 +1,11 @@
+{
+  "mappings": {
+    "answer": {
+      "properties": {
+        "text": {"type": "string"},
+        "created": {"type": "date"},
+        "member": {"type": "string", "index": "not_analyzed"}
+      }
+    }
+  }
+}
