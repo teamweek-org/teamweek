@@ -7,6 +7,6 @@ pom.xml.asc
 *.class
 /.lein-*
 /.nrepl-port
-.hgignore
-.hg/
+/profiles.clj
+dev/local.clj
 .idea/

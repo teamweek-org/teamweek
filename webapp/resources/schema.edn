@@ -1,0 +1,106 @@
+[
+ ;; teams
+
+ {:db/id #db/id[:db.part/db]
+  :db/ident :team/domain
+  :db/valueType :db.type/string
+  :db/cardinality :db.cardinality/one
+  :db/unique :db.unique/value
+  :db/doc "Team domain"
+  :db.install/_attribute :db.part/db}
+
+ {:db/id #db/id[:db.part/db]
+  :db/ident :team/name
+  :db/valueType :db.type/string
+  :db/cardinality :db.cardinality/one
+  :db/doc "Team name"
+  :db.install/_attribute :db.part/db}
+
+ {:db/id #db/id[:db.part/db]
+  :db/ident :team/token
+  :db/valueType :db.type/string
+  :db/cardinality :db.cardinality/one
+  :db/doc "Slack bot API token"
+  :db.install/_attribute :db.part/db}
+
+ {:db/id #db/id[:db.part/db]
+  :db/ident :team/schedule
+  :db/valueType :db.type/string
+  :db/cardinality :db.cardinality/one
+  :db/doc "CRON expression to schedule request to members"
+  :db.install/_attribute :db.part/db}
+
+ {:db/id #db/id[:db.part/db]
+  :db/ident :team/members
+  :db/valueType :db.type/ref
+  :db/cardinality :db.cardinality/many
+  :db/isComponent true
+  :db/doc "Members of a team"
+  :db.install/_attribute :db.part/db}
+
+ {:db/id #db/id[:db.part/db]
+  :db/ident :team/questions
+  :db/valueType :db.type/ref
+  :db/cardinality :db.cardinality/many
+  :db/isComponent true
+  :db/doc "Team specific questions"
+  :db.install/_attribute :db.part/db}
+
+ ;; members
+
+ {:db/id #db/id[:db.part/db]
+  :db/ident :member/name
+  :db/valueType :db.type/string
+  :db/cardinality :db.cardinality/one
+  :db/doc "Team member name"
+  :db.install/_attribute :db.part/db}
+
+ {:db/id #db/id[:db.part/db]
+  :db/ident :member/email
+  :db/valueType :db.type/string
+  :db/cardinality :db.cardinality/one
+  :db/doc "Team member email"
+  :db.install/_attribute :db.part/db}
+
+ ;; questions
+
+ {:db/id #db/id[:db.part/db]
+  :db/ident :question/text
+  :db/valueType :db.type/string
+  :db/cardinality :db.cardinality/one
+  :db/doc "Question text"
+  :db.install/_attribute :db.part/db}
+
+ {:db/id #db/id[:db.part/db]
+  :db/ident :question/answers
+  :db/valueType :db.type/ref
+  :db/cardinality :db.cardinality/many
+  :db/isComponent true
+  :db/doc "Ansewrs to a question"
+  :db.install/_attribute :db.part/db}
+
+ ;; answers
+
+ {:db/id #db/id[:db.part/db]
+  :db/ident :answer/text
+  :db/valueType :db.type/string
+  :db/cardinality :db.cardinality/one
+  :db/fulltext true
+  :db/doc "Answer text"
+  :db.install/_attribute :db.part/db}
+
+ {:db/id #db/id[:db.part/db]
+  :db/ident :answer/author
+  :db/valueType :db.type/ref
+  :db/cardinality :db.cardinality/one
+  :db/isComponent true
+  :db/doc "Author (member) of the answer"
+  :db.install/_attribute :db.part/db}
+
+ {:db/id #db/id[:db.part/db]
+  :db/ident :answer/ts
+  :db/valueType :db.type/instant
+  :db/cardinality :db.cardinality/one
+  :db/doc "Timestamp of the answer"
+  :db.install/_attribute :db.part/db}
+ ]
