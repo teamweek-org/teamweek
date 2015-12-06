@@ -1,4 +1,4 @@
-(defproject slackbot "0.1.0-SNAPSHOT"
+(defproject slackbot "0.1.0"
   :description "Teamweek slackbot"
   :url "https://teamweek.org"
   :license {:name "Mozilla Public License, version 2.0"
