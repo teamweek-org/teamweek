@@ -187,8 +187,6 @@
 (defjob QuestionnaireJob [job-data]
   (try
     (let [{:strs [domain db-conn scheduler]} (conversion/from-job-data job-data)
-          _ (when (scheduler/currently-executing-job? scheduler (str "jobs." domain))
-              (throw (ex-info "Job is still running" {:domain domain})))
           _ (log/info "Scheduled job started for" domain)
           db (d/db db-conn)
           token (:team/token (d/entity db [:team/domain domain]))
