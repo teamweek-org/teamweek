@@ -1,5 +1,7 @@
 (ns org.teamweek.webapp.endpoint.team
-  (:require [compojure.core :refer :all]
+  (:require [clojure.string :as str]
+            [clojure.set :as set]
+            [compojure.core :refer :all]
             [ring.util.response :refer :all]
             [ring.middleware.flash :refer [flash-response]]
             [clj-http.client :as http]
@@ -45,6 +47,51 @@
                                    :question/order 2}]}]
     @(d/transact conn [team-tx])))
 
+(defn build-team-settings-update-tx [db token
+                                     current-schedule new-schedule
+                                     current-members new-members]
+  (let [tx []
+        tx (when (not= current-schedule new-schedule)
+             (conj tx [:db/add [:team/token token] :team/schedule new-schedule]))
+        removed-members (set/difference current-members new-members)
+        added-members (set/difference new-members current-members)
+        removed-tx (remove nil?
+                           (for [member removed-members]
+                             (let [member-eid (d/q '[:find ?member .
+                                                     :in $ ?token ?name
+                                                     :where
+                                                     [?team :team/token ?token]
+                                                     [?team :team/members ?member]
+                                                     [?member :member/name ?name]]
+                                                   db token member)]
+                               (when member-eid
+                                 [:db.fn/retractEntity member-eid]))))
+        added-tx (for [member added-members]
+                   {:db/id (d/tempid :db.part/user)
+                    :member/name member
+                    :team/_members [:team/token token]})]
+    (reduce into tx [removed-tx added-tx])))
+
+;; Only schedule and members for now
+(defn update-team-settings [req]
+  (let [db (:db req)
+        token (get-in req [:session "teamweek-token"])
+        {:keys [schedule members]} (:params req)
+        new-schedule (or schedule "")
+        new-members (set (when members (map str/trim (str/split members #"\n"))))
+        current-schedule (:team/schedule (d/entity db [:team/token token]))
+        current-members (set (d/q '[:find [?name ...]
+                                    :in $ ?token
+                                    :where
+                                    [?team :team/token ?token]
+                                    [?team :team/members ?member]
+                                    [?member :member/name ?name]]
+                                  db token))
+        tx (build-team-settings-update-tx db token
+                                          current-schedule new-schedule
+                                          current-members new-members)]
+    (prn tx)))
+
 (defn team-endpoint [config]
   (context "/team" []
     (GET "/" req
@@ -71,4 +118,12 @@
                  ;; How does this work?
                  ;; (flash-response {:flash "Invalid token"} req)
                  (redirect "/"))))))
-       (redirect "/")))))
+       (redirect "/")))
+
+   (POST "/update" req
+         (update-team-settings req)
+         (redirect "/team"))
+
+   (GET "/logout" req
+     (-> (redirect "/")
+         (assoc :session nil)))))

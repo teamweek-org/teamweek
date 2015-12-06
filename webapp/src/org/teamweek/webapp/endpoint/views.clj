@@ -1,6 +1,6 @@
 (ns org.teamweek.webapp.endpoint.views
   (:require [clojure.string :as str]
-            [ring.middleware.anti-forgery :refer (*anti-forgery-token*)]
+            [ring.util.anti-forgery :refer (anti-forgery-field)]
             [datomic.api :as d]
             [hiccup.page :as page]
             [hiccup.form :as form]))
@@ -17,9 +17,10 @@
           [:body
            [:h1 "Welcome " (or (:team/name data)
                                (:team/domain data))]
+           [:a {:href "/team/logout"} "Logout"]
            (form/form-to
             [:post "/team/update"]
-
+            (anti-forgery-field)
             (form/label "schedule" "Schedule:")
             (form/text-field "schedule" (:team/schedule data))
             [:br]
