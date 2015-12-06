@@ -168,7 +168,7 @@
                 :answer/text (:answer answer)
                 :answer/ts (:ts answer)
                 :question/_answers (:question-id answer)})
-          es-uri (:es-uri@config)]
+          es-uri (:es-uri @config)]
       @(d/transact db-conn tx)
       (doseq [answer answers]
         @(http/post (str es-uri domain "/answer/") {:body (json/encode {:text (:answer answer) :created (:ts answer) :member user})}))
