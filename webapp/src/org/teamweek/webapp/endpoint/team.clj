@@ -1,6 +1,7 @@
 (ns org.teamweek.webapp.endpoint.team
   (:require [clojure.string :as str]
             [clojure.set :as set]
+            [clojure.java.io :as io]
             [compojure.core :refer :all]
             [ring.util.response :refer :all]
             [ring.middleware.flash :refer [flash-response]]
@@ -112,6 +113,8 @@
              (if (:domain team-data)
                (do
                  (create-team conn token team-data)
+                 ;; TODO remove hardcoded ES_URI
+                 (http/put (str "http://localhost:9200/" (:domain team-data)) {:body (slurp (io/resource "mappings.json"))})
                  (->
                    (redirect "/team")
                    (assoc-in [:session "teamweek-token"] token)))
