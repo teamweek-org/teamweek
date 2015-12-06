@@ -67,7 +67,6 @@
                        [:input {:type "checkbox" :value val :id val :name val :checked checked?} " " text]])
                     [(form/label "hr" "Hour (EET): ")
                      (form/drop-down "hr" (map str (range 24)) (:hr schedule))
-
                      (form/label "schedule_cron" "Cron expression")
                      (form/text-field "schedule_cron" "")])
             (list (form/label "schedule_cron" "Cron expression (use a cron expression like <pre>0 0 12 ? * FRI *</pre> to get the checkboxes back):")

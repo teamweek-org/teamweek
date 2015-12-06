@@ -44,9 +44,10 @@
                    [:input {:name "q" :value q}]
                    [:input {:type "submit" :name "submit" :value "Search" :class "pure-button pure-button-primary"}]]]
                  [:div
-                  [:div (str (get-in result [:hits :total]) " results")]
+                  [:div (str (get-in result [:hits :total]) " result(s)")]
                   (for [hit (get-in result [:hits :hits])]
-                    [:div {:style "margin-top: 20px"} (:text (:_source hit))])]]
+                    [:div {:style "border: 1px solid CornflowerBlue; padding:10px; margin-top: 10px; background-color: GhostWhite;"} (:text (:_source hit))
+                     [:div {:style "text-align: right; font-size: x-small"} (str "by " (:member (:_source hit)) " @" (:created (:_source hit)))]])]]
                 [:div.pure-u-1-3]]))
            (redirect "/"))
          (redirect "/"))))))
