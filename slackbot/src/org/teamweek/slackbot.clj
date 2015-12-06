@@ -140,7 +140,7 @@
                         :user username
                         :question-id (:db/id question)
                         :answer (:text (async/alt!!
-                                         (async/<!! answer-chan) ([text] text)
+                                         answer-chan ([text] text)
                                          (async/timeout ten-minutes) ([_] "")))}))
                []
                questions)]
