@@ -1,5 +1,6 @@
 (ns org.teamweek.webapp.endpoint.team
   (:require [compojure.core :refer :all]
+            [ring.util.response :refer :all]
             [clj-http.client :as http]
             [cheshire.core :refer [parse-string]]
             [datomic.api :as d]))
@@ -25,10 +26,33 @@
      :name name
      :members members}))
 
+(defn create-team
+  "Creates a team based on a token"
+  [req]
+  (if-let [token (get (:form-params req) "token")]
+    (let [conn (:conn req)
+          team-data (get-team-data token)
+          team-id (d/tempid :db.part/user)
+          team-tx {:db/id team-id
+                   :team/domain (:domain team-data)
+                   :team/name (:name team-data)
+                   :team/schedule "0 0 13 ? * FRI *" ; every FRI at 13:00
+                   :team/members (for [{:keys [email name]} (:members team-data)]
+                                   {:member/name name
+                                    :member/email email})
+                   :team/questions [{:question/text "What have you accomplished this week?"
+                                     :question/order 1}
+                                    {:question/text "What you commit to do next week?"
+                                     :question/order 2}]}
+          ]
+      @(d/transact conn [team-tx]))
+    {:status 400}))
+
 (defn team-endpoint [config]
   (context "/team" []
    (GET "/" req
      (str ring.middleware.anti-forgery/*anti-forgery-token*))
    (POST "/" req
-     (prn (:form-params req))
+     (let [t (create-team req)]
+       (clojure.pprint/pprint t))
      "Hola")))
