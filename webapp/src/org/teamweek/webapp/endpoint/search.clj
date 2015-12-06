@@ -33,7 +33,7 @@
                [:form {:action "/search" :method "get"}
                 [:input {:type "hidden" :name "t" :value t}]
                 [:input {:name "q" :value q}]
-                [:input {:type "submit" :name "submit"}]]
+                [:input {:type "submit" :name "submit" :value "Search"}]]
                [:ul
                 (for [hit (get-in result [:hits :hits])]
                   [:li (:text (:_source hit))])]))
