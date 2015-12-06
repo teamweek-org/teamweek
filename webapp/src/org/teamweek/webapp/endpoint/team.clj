@@ -49,7 +49,7 @@
   (context "/team" []
     (GET "/" req
       (if-let [token (get (:session req) "teamweek-token")]
-        (views/team-page req)
+        (views/team-page req token)
         (redirect "/")))
 
    (POST "/" req
