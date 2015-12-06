@@ -187,7 +187,7 @@
 (defjob QuestionnaireJob [job-data]
   (try
     (let [{:strs [domain db-conn scheduler]} (conversion/from-job-data job-data)
-          _ (when (scheduler/currently-executing-job? scheduler (jobs/key (str "jobs." domain)))
+          _ (when (scheduler/currently-executing-job? scheduler (str "jobs." domain))
               (throw (ex-info "Job is still running" {:domain domain})))
           _ (log/info "Scheduled job started for" domain)
           db (d/db db-conn)
@@ -336,6 +336,7 @@
   ;; for testing
   (defonce slack-token (or (System/getenv "SLACK_TOKEN")
                            (throw (ex-info "No SLACK_TOKEN provided" {}))) )
+
 
 
   ;; db stuff
