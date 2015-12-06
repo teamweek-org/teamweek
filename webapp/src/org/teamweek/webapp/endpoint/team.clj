@@ -3,7 +3,8 @@
             [ring.util.response :refer :all]
             [clj-http.client :as http]
             [cheshire.core :refer [parse-string]]
-            [datomic.api :as d]))
+            [datomic.api :as d]
+            [org.teamweek.webapp.endpoint.views :as views]))
 
 
 (defn filter-user-data
@@ -48,8 +49,8 @@
 
 (defn team-endpoint [config]
   (context "/team" []
-   (GET "/" req
-     (str ring.middleware.anti-forgery/*anti-forgery-token*))
+    (GET "/" req
+      (views/team-page req))
    (POST "/" req
      (if-let [token (get (:form-params req) "token")]
        (let [db (:db req)
