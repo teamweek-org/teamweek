@@ -119,6 +119,7 @@
                                        :type "message"
                                        :channel (find-channel-id conn channel)
                                        :text msg})))
+(def ten-minutes 600000)
 
 (defn send-questionnaire
   [conn token username questions]
@@ -138,7 +139,9 @@
                         :domain (:domain (:team conn))
                         :user username
                         :question-id (:db/id question)
-                        :answer (:text (async/<!! answer-chan))}))
+                        :answer (:text (async/alt!!
+                                         (async/<!! answer-chan) ([text] text)
+                                         (async/timeout ten-minutes) ([_] "")))}))
                []
                questions)]
       (send-to-user! conn username
