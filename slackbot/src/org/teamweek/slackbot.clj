@@ -14,10 +14,6 @@
             [byte-streams])
   (:gen-class))
 
-;; for testing
-(defonce slack-token (or (System/getenv "SLACK_TOKEN")
-                         (throw (ex-info "No SLACK_TOKEN provided" {}))) )
-
 (defn connect-url [token]
   (str "https://slack.com/api/rtm.start?token=" token))
 
@@ -155,7 +151,7 @@
 
 (defn submit-answers [db-conn domain user answers]
   (try
-    (log/infof "Submitting % answers to %s for %s" (count answers) domain user)
+    (log/infof "Submitting %s answers to %s for %s" (count answers) domain user)
     (let [db (d/db db-conn)
           user-eid (d/q '[:find ?member .
                           :in $ ?domain ?user
@@ -171,7 +167,7 @@
                 :answer/ts (:ts answer)
                 :question/_answers (:question-id answer)})]
       @(d/transact db-conn tx)
-      (log/infof "Successfully Submitted % answers to %s for %s" (count answers) domain user))
+      (log/infof "Successfully Submitted %s answers to %s for %s" (count answers) domain user))
     (catch Exception e
       (log/errorf e "Failed to submit answers %s for domain %s and user %s"
                   (pr-str answers) domain user)
@@ -201,7 +197,6 @@
                         (not-empty questions))
                (connect token))]
     (if conn
-      ;; TODO in parallell, but the job is not finished before all has answered/timeout
       (do
         (log/infof "Sending quesitonnaire for %s (%s users and %s questions)" domain users questions)
         (dorun
@@ -310,20 +305,14 @@
   (let [scheduler (scheduler/start (scheduler/initialize))
         db-conn (d/connect db-uri)]
     (init-start-jobs scheduler db-conn)
-    (listen-for-team-updates scheduler db-conn)))
+    (future (listen-for-team-updates scheduler db-conn))))
 
 (comment
-  (def conn (connect slack-token))
 
-  ((:shutdown-fn conn))
+  ;; for testing
+  (defonce slack-token (or (System/getenv "SLACK_TOKEN")
+                           (throw (ex-info "No SLACK_TOKEN provided" {}))) )
 
-  (send-to-user! conn "jonas" "ping!")
-
-
-  (async/thread
-    (let [answers (send-questionnaire conn "jonas" ["How are you today?"
-                                                    "What are your plans for tomorrow?"])]
-      (send-to-user! conn "jonas" (str "You answered: " (pr-str answers)))))
 
   ;; db stuff
 
@@ -336,13 +325,13 @@
 
   (def db-conn (d/connect db-uri))
 
-  (d/q '[:find (pull ?answer [:answer/author :answer/text :answer/ts])
+  (d/q '[:find ?answer ;(pull ?answer [:answer/author :answer/text :answer/ts])
          :where
          [?answer :answer/text]]
        (d/db db-conn))
 
 
-  (d/transact db-conn (read-string (slurp "../webapp/resources/schema.edn")))
+  @(d/transact db-conn (read-string (slurp "../webapp/resources/schema.edn")))
 
   (future (listen-for-team-updates nil db-conn))
 
@@ -355,18 +344,23 @@
      :team/members (for [[name email] members]
                      {:member/name name
                       :member/email email})
-     :team/questions (for [text questions]
-                       {:question/text text})})
+     :team/questions (for [{:keys [text order]} questions]
+                       {:question/text text
+                        :question/order order})})
 
   (def every-minute "0 * * * * ?")
 
-  (d/transact db-conn [(create-team "teamweek-org" slack-token every-minute
-                                    [#_["jonas" "jonas@gmail"]
-                                     ["ivan" "ivan@gmail"]]
-                                    ["How are you today?"
-                                     "What are your plans for tomorrow?"])])
+  @(d/transact db-conn [(create-team "teamweek-org" slack-token every-minute
+                                     [["jonas" "jonas@gmail"]
+                                      #_["ivan" "ivan@gmail"]]
+                                     [{:text "How are you today?"
+                                       :order 1}
+                                      {:text "What are your plans for tomorrow?"
+                                       :order 2}])])
 
-  (d/transact db-conn [[:db.fn/retractEntity [:team/domain "teamweek-org"]]])
+  @(d/transact db-conn [[:db.fn/retractEntity [:team/domain "teamweek-org"]]])
+
+  @(d/transact db-conn [[:db/add [:team/domain "teamweek-org"] :team/schedule "30 * * * * ?"]])
 
 
 
