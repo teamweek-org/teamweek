@@ -78,7 +78,7 @@
         token (get-in req [:session "teamweek-token"])
         {:keys [schedule members]} (:params req)
         new-schedule (or schedule "")
-        new-members (set (when members (map str/trim (str/split members #"\n"))))
+        new-members (set (remove empty? (when members (map str/trim (str/split members #"\n")))))
         current-schedule (:team/schedule (d/entity db [:team/token token]))
         current-members (set (d/q '[:find [?name ...]
                                     :in $ ?token
@@ -90,7 +90,8 @@
         tx (build-team-settings-update-tx db token
                                           current-schedule new-schedule
                                           current-members new-members)]
-    (prn tx)))
+    (when-not (empty? tx)
+      @(d/transact (:conn req) tx))))
 
 (defn team-endpoint [config]
   (context "/team" []
