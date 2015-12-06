@@ -242,51 +242,60 @@
         (do (log/info "Skipping scheduling for" domain))))))
 
 (defn schedule-new [scheduler db-conn db-before db-after]
-  (let [new-domains (d/q '[:find [?new-domains ...]
-                           :in $db-before $db-after
-                           :where
-                           [$db-after ?team :team/domain ?new-domains]
-                           [(missing? $db-before ?team :team/domain)]]
-                         db-before db-after)]
-    (when-not (empty? new-domains)
-      (log/info "New domains to schedule" (str/join ", " new-domains)))
-    (doseq [domain new-domains]
-      (if-let [schedule (:team/schedule (d/entity db-after [:team/domain domain]))]
-        (do (log/infof "Scheduling new domain %s with cron %s" domain schedule)
-            (schedule-questionnaire-job scheduler db-conn domain schedule))
-        (do (log/infof "Skipping scheduler for domain %s" domain))))))
+  (try
+    (let [new-domains (d/q '[:find [?new-domains ...]
+                              :in $db-before $db-after
+                              :where
+                              [$db-after ?team :team/domain ?new-domains]
+                              [(missing? $db-before ?team :team/domain)]]
+                            db-before db-after)]
+       (when-not (empty? new-domains)
+         (log/info "New domains to schedule" (str/join ", " new-domains)))
+       (doseq [domain new-domains]
+         (if-let [schedule (:team/schedule (d/entity db-after [:team/domain domain]))]
+           (do (log/infof "Scheduling new domain %s with cron %s" domain schedule)
+               (schedule-questionnaire-job scheduler db-conn domain schedule))
+           (do (log/infof "Skipping scheduler for domain %s" domain)))))
+    (catch Exception e
+      (log/error e "Failed to create new schedule"))))
 
 (defn schedule-removed [scheduler db-conn db-before db-after]
-  (let [removed-domains (d/q '[:find [?removed-domains ...]
-                               :in $ $db-after
-                               :where
-                               [$ ?team :team/domain ?removed-domains]
-                               [(missing? $db-after ?team :team/domain)]]
-                             db-before db-after)]
-    (when-not (empty? removed-domains)
-      (log/info "Domains removed" (str/join ", " removed-domains)))
-    (doseq [domain removed-domains]
-      (log/info "Unscheduling" domain)
-      (scheduler/delete-job scheduler (jobs/key (str "jobs." domain))))))
+  (try
+    (let [removed-domains (d/q '[:find [?removed-domains ...]
+                                 :in $ $db-after
+                                 :where
+                                 [$ ?team :team/domain ?removed-domains]
+                                 [(missing? $db-after ?team :team/domain)]]
+                               db-before db-after)]
+      (when-not (empty? removed-domains)
+        (log/info "Domains removed" (str/join ", " removed-domains)))
+      (doseq [domain removed-domains]
+        (log/info "Unscheduling" domain)
+        (scheduler/delete-job scheduler (jobs/key (str "jobs." domain)))))
+    (catch Exception e
+      (log/error e "Failed to remove scheduler"))))
 
 (defn schedule-updates [scheduler db-conn db-before db-after]
-  (let [updated-crons (d/q '[:find ?domain ?schedule-after
-                             :in $db-before $db-after
-                             :where
-                             [$db-after  ?team :team/domain ?domain]
-                             [$db-before ?team :team/schedule ?schedule-before]
-                             [$db-after  ?team :team/schedule ?schedule-after]
-                             [(not= ?schedule-before ?schedule-after)]]
-                           db-before db-after)]
-    (when-not (empty? updated-crons)
-      (log/info "Updated schedules" (pr-str updated-crons)))
-    (doseq [[domain new-schedule] updated-crons]
-      (log/info "Unscheduling" domain)
-      (scheduler/delete-job scheduler (jobs/key (str "jobs." domain)))
-      (if-not (empty? new-schedule)
-        (do (log/infof "Scheduling domain %s with schedule %s" domain new-schedule)
-            (schedule-questionnaire-job scheduler db-conn domain new-schedule))
-        (do (log/info "Skipping scheduler for domain" domain))))))
+  (try
+    (let [updated-crons (d/q '[:find ?domain ?schedule-after
+                                :in $db-before $db-after
+                                :where
+                                [$db-after  ?team :team/domain ?domain]
+                                [$db-before ?team :team/schedule ?schedule-before]
+                                [$db-after  ?team :team/schedule ?schedule-after]
+                                [(not= ?schedule-before ?schedule-after)]]
+                              db-before db-after)]
+       (when-not (empty? updated-crons)
+         (log/info "Updated schedules" (pr-str updated-crons)))
+       (doseq [[domain new-schedule] updated-crons]
+         (log/info "Unscheduling" domain)
+         (scheduler/delete-job scheduler (jobs/key (str "jobs." domain)))
+         (if-not (empty? new-schedule)
+           (do (log/infof "Scheduling domain %s with schedule %s" domain new-schedule)
+               (schedule-questionnaire-job scheduler db-conn domain new-schedule))
+           (do (log/info "Skipping scheduler for domain" domain)))))
+    (catch Exception e
+      (log/errorf e "Failed to update schedule"))) )
 
 (defn listen-for-team-updates [scheduler db-conn]
   (let [queue (d/tx-report-queue db-conn)]
@@ -352,7 +361,7 @@
 
   @(d/transact db-conn [(create-team "teamweek-org" slack-token every-minute
                                      [["jonas" "jonas@gmail"]
-                                      #_["ivan" "ivan@gmail"]]
+                                      ["notauser" "notauser"]]
                                      [{:text "How are you today?"
                                        :order 1}
                                       {:text "What are your plans for tomorrow?"
@@ -360,7 +369,9 @@
 
   @(d/transact db-conn [[:db.fn/retractEntity [:team/domain "teamweek-org"]]])
 
-  @(d/transact db-conn [[:db/add [:team/domain "teamweek-org"] :team/schedule "30 * * * * ?"]])
+
+  @(d/transact db-conn [[:db/add [:team/domain "teamweek-org"] :team/schedule every-minute]])
+  @(d/transact db-conn [[:db/add [:team/domain "teamweek-org"] :team/token "badtoken"]])
 
 
 
