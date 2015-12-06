@@ -40,13 +40,13 @@
 
   (d/create-database "datomic:free://localhost:4334/teamweek")
 
-  (http/put "http://localhost:9200/team1" {:body (slurp (io/resource "mappings.json"))})
+  (http/put "http://localhost:9200/teamweek-org" {:body (slurp (io/resource "mappings.json"))})
 
-  (http/post "http://localhost:9200/team1/answer/" {:body (json/encode {:text "#teamweek rocks!" :created (java.util.Date.) :member "ivan"})})
+  (http/post "http://localhost:9200/teamweek-org/answer/" {:body (json/encode {:text "#teamweek rocks!" :created (java.util.Date.) :member "ivan"})})
 
-  (http/get "http://localhost:9200/team1/_search")
+  (http/get "http://localhost:9200/teamweek-org/_search")
 
-  (http/get "http://localhost:9200/team1/_search" {:body (json/encode {:query {:query_string {:analyze_wildcard "true"
+  (http/get "http://localhost:9200/teamweek-org/_search" {:body (json/encode {:query {:query_string {:analyze_wildcard "true"
                                                                                              :query "#TEamWeEk"}}})})
 
   )
