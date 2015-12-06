@@ -64,8 +64,8 @@
            (if (map? schedule)
             (concat (for [[val checked? text] (:days schedule)]
                       [:label.pure-checkbox {:for "val"}
-                       [:input {:type "checkbox" :value val :id val :name val :checked checked?} text]])
-                    [(form/label "hr" "Hour: ")
+                       [:input {:type "checkbox" :value val :id val :name val :checked checked?} " " text]])
+                    [(form/label "hr" "Hour (EET): ")
                      (form/drop-down "hr" (map str (range 24)) (:hr schedule))
 
                      (form/label "schedule_cron" "Cron expression")
