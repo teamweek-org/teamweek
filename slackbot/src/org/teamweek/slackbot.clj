@@ -9,6 +9,7 @@
             [clojurewerkz.quartzite.triggers :as triggers]
             [clojurewerkz.quartzite.schedule.cron :as cron]
             [clojurewerkz.quartzite.conversion :as conversion]
+            [taoensso.timbre :as log]
             [byte-streams])
   (:gen-class))
 
@@ -260,6 +261,8 @@
         (println "============================================")))))
 
 (defn -main [db-uri]
+  (log/merge-config! {:level :info
+                      :output-fn (partial log/default-output-fn {:stacktrace-fonts {}})})
   (let [scheduler (scheduler/start (scheduler/initialize))
         db-conn (d/connect db-uri)]
     (init-start-jobs scheduler db-conn)

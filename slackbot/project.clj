@@ -10,6 +10,7 @@
                  [com.datomic/datomic-free "0.9.5344"]
                  [aleph "0.4.1-beta3"]
                  [cheshire "5.5.0"]
-                 [clojurewerkz/quartzite "2.0.0"]]
+                 [clojurewerkz/quartzite "2.0.0"]
+                 [com.taoensso/timbre "4.1.4"]]
   :main ^:skip-aot org.teamweek.slackbot
   :profiles {:uberjar {:aot :all}})
