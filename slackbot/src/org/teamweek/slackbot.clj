@@ -12,7 +12,6 @@
             [clojurewerkz.quartzite.conversion :as conversion]
             [taoensso.timbre :as log]
             [byte-streams])
-  (:import java.util.Date)
   (:gen-class))
 
 (def config (atom {}))
