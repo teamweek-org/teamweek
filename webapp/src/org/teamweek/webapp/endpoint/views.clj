@@ -70,7 +70,7 @@
 
                      (form/label "schedule_cron" "Cron expression")
                      (form/text-field "schedule_cron" "")])
-            (list (form/label "schedule_cron" "Cron expression (use a cron expression like <pre>0 0 12 ? * FRI *</pre> to get the checkboxes back):")
+            (list (form/label "schedule_cron" "(use the following expression to get the checkboxes back) <pre>0 0 12 ? * FRI *</pre>")
                   (form/text-field "schedule_cron" schedule)))]
           (form/label "members" "Members:")
           (form/text-area {:style "width: 100%; height: 150px;"}
