@@ -4,7 +4,8 @@
             [ring.middleware.flash :refer [flash-response]]
             [clj-http.client :as http]
             [cheshire.core :refer [parse-string]]
-            [datomic.api :as d]))
+            [datomic.api :as d]
+            [org.teamweek.webapp.endpoint.views :as views]))
 
 
 (defn filter-user-data
@@ -46,11 +47,11 @@
 
 (defn team-endpoint [config]
   (context "/team" []
-   (GET "/" req
-     (prn ring.middleware.anti-forgery/*anti-forgery-token*)
-     (if-let [token (get (:session req) "teamweek-token")]
-       "OK"
-       (redirect "/")))
+    (GET "/" req
+      (if-let [token (get (:session req) "teamweek-token")]
+        (views/team-page req)
+        (redirect "/")))
+
    (POST "/" req
      (if-let [token (get (:form-params req) "token")]
        (let [db (:db req)
