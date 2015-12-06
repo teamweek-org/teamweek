@@ -44,7 +44,7 @@
                                   :member/email email})
                  :team/questions [{:question/text "What have you accomplished this week?"
                                    :question/order 1}
-                                  {:question/text "What you commit to do next week?"
+                                  {:question/text "What do you commit to do next week?"
                                    :question/order 2}]}]
     @(d/transact conn [team-tx])))
 
