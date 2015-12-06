@@ -180,10 +180,10 @@
                (connect token))]
     (if conn
       ;; TODO in parallell, but the job is not finished before all has answered/timeout
-      (doseq [user users]
-        (let [answers (send-questionnaire conn user (sort-by :question/order questions))]
-          (submit-answers db-conn domain user answers))
-        ((:shutdown-fn conn)))
+      (do (doseq [user users]
+            (let [answers (send-questionnaire conn user (sort-by :question/order questions))]
+              (submit-answers db-conn domain user answers)))
+          ((:shutdown-fn conn)))
       (do (println "Nothing to do")
           (println "Token" token) ;; TODO proper logging!
           (println "Users" users)
