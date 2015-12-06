@@ -88,7 +88,8 @@
         token (get-in req [:session "teamweek-token"])
         params (:params req)
         new-schedule (get-schedule (:params req))
-        new-members (set (remove empty? (when members (map str/trim (str/split (:members params) #"\n")))))
+        new-members (set (remove empty? (when (:members params)
+                                          (map str/trim (str/split (:members params) #"\n")))))
         current-schedule (:team/schedule (d/entity db [:team/token token]))
         current-members (set (d/q '[:find [?name ...]
                                     :in $ ?token

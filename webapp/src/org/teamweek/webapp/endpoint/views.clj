@@ -45,8 +45,7 @@
     (page/html5
           [:head
            [:title "Welcome to Teamweek"]
-           (page/include-css "/assets/normalize.css/normalize.css"
-                             "/css/site.css")]
+           (page/include-css "https://cdnjs.cloudflare.com/ajax/libs/pure/0.6.0/pure-min.css")]
           [:body
            [:h1 "Welcome " (or (:team/name data)
                                (:team/domain data))]
@@ -60,14 +59,13 @@
                               (form/check-box val checked? val)
                               (form/label val text)))
                       [[:br]
+                       (form/label "hr" "Hour: ")
                        (form/drop-down "hr" (map str (range 24)) (:hr schedule))
                        [:br]
                        (form/label "schedule_cron" "Cron string (only for advanced users/testing):")
                        (form/text-field "schedule_cron" "")])
               (list (form/label "schedule_cron" "Cron string (use a cron string like '0 0 12 ? * FRI *' to get the checkboxes back):")
                     (form/text-field "schedule_cron" schedule)))
-            [:br]
-
             [:br]
             (form/label "members" "Members:")
             (form/text-area "members"
