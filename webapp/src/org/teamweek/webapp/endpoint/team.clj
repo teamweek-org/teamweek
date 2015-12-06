@@ -72,13 +72,22 @@
                     :team/_members [:team/token token]})]
     (reduce into tx [removed-tx added-tx])))
 
+(defn get-schedule [{:keys [schedule_cron MON TUE WED THU FRI SAT SUN hr] :as params}]
+  (if (empty? schedule_cron)
+    (if (every? nil? [MON TUE WED THU FRI SAT SUN])
+      ""
+      (let [days (str/join "," (remove nil? [MON TUE WED THU FRI SAT SUN]))
+          hr (or hr 12)]
+        (format "0 0 %s ? * %s *" hr days)))
+    (str/trim schedule_cron)))
+
 ;; Only schedule and members for now
 (defn update-team-settings [req]
   (let [db (:db req)
         token (get-in req [:session "teamweek-token"])
-        {:keys [schedule members]} (:params req)
-        new-schedule (or schedule "")
-        new-members (set (remove empty? (when members (map str/trim (str/split members #"\n")))))
+        params (:params req)
+        new-schedule (get-schedule (:params req))
+        new-members (set (remove empty? (when members (map str/trim (str/split (:members params) #"\n")))))
         current-schedule (:team/schedule (d/entity db [:team/token token]))
         current-members (set (d/q '[:find [?name ...]
                                     :in $ ?token
