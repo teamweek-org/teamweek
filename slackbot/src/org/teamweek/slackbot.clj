@@ -57,32 +57,38 @@
     conn))
 
 (defn connect [token]
-  (let [conn-data (-> (str "https://slack.com/api/rtm.start?token=" token)
+  (try
+    (log/info "Attempting to connect to" token)
+    (let [conn-data (-> (str "https://slack.com/api/rtm.start?token=" token)
                       (http/get)
                       deref
                       :body
                       byte-streams/to-string
                       (json/parse-string true))
-        shutdown? (atom false)
-        incoming-messages (async/chan)
-        dm-pub (async/pub incoming-messages
-                          (fn topic-fn [msg]
-                            (:username msg)))
-        ws-conn (websocket-client (:url conn-data)
-                                  shutdown?)
-        shutdown-fn (fn []
-                      (println "Shutting down" (:url conn-data))
-                      (reset! shutdown? true)
-                      (async/close! incoming-messages)
-                      (stream/close! ws-conn)
-                      (println "ok."))
-        conn (assoc conn-data
-                    :ws-conn ws-conn
-                    :incoming-messages incoming-messages
-                    :dm-pub dm-pub
-                    :shutdown-fn shutdown-fn)]
-    (route-messages conn incoming-messages shutdown?)
-    conn))
+          shutdown? (atom false)
+          incoming-messages (async/chan)
+          dm-pub (async/pub incoming-messages
+                            (fn topic-fn [msg]
+                              (:username msg)))
+          ws-conn (websocket-client (:url conn-data)
+                                    shutdown?)
+          shutdown-fn (fn []
+                        (log/info "Shutting down" (:url conn-data))
+                        (reset! shutdown? true)
+                        (async/close! incoming-messages)
+                        (stream/close! ws-conn)
+                        (log/info "Successfully shut down" (:url conn-data)))
+          conn (assoc conn-data
+                      :ws-conn ws-conn
+                      :incoming-messages incoming-messages
+                      :dm-pub dm-pub
+                      :shutdown-fn shutdown-fn)]
+      (route-messages conn incoming-messages shutdown?)
+      (log/info "Successfully connected to" token)
+      conn)
+    (catch Exception e
+      (log/error e "Failed to connect to" token)))
+  )
 
 (defn find-user-dm-id [conn user]
   (let [user-id (some #(if (= (:name %) user)
@@ -117,51 +123,62 @@
 
 (defn send-questionnaire
   [conn username questions]
-  (send-to-user! conn username
-                 (format "Greetings %s. I have a few questions for you." username))
-  (let [dm-pub (:dm-pub conn)
-        answer-chan (async/chan)
-        dm-sub (async/sub dm-pub username answer-chan)
-        qas (reduce
-             (fn [question-answers question]
-               (log/infof "Sending \"%s\" to %s" (:question/text question) username)
-               (send-to-user! conn username (:question/text question))
-               (conj question-answers
-                     {:ts (java.util.Date.)
-                      :team (:name (:team conn))
-                      :domain (:domain (:team conn))
-                      :user username
-                      :question-id (:db/id question)
-                      :answer (:text (async/<!! answer-chan))}))
-             []
-             questions)]
-    (log/infof "Questionnaire completed for %s. %s questions answered" username (count qas))
-    (async/unsub dm-pub username answer-chan)
-    (async/close! answer-chan)
-    qas))
+  (try
+    (send-to-user! conn username
+                   (format "Greetings %s. I have a few questions for you." username))
+    (let [dm-pub (:dm-pub conn)
+          answer-chan (async/chan)
+          dm-sub (async/sub dm-pub username answer-chan)
+          qas (reduce
+               (fn [question-answers question]
+                 (log/infof "Sending \"%s\" to %s" (:question/text question) username)
+                 (send-to-user! conn username (:question/text question))
+                 (conj question-answers
+                       {:ts (java.util.Date.)
+                        :team (:name (:team conn))
+                        :domain (:domain (:team conn))
+                        :user username
+                        :question-id (:db/id question)
+                        :answer (:text (async/<!! answer-chan))}))
+               []
+               questions)]
+      (log/infof "Questionnaire completed for %s. %s questions answered" username (count qas))
+      (async/unsub dm-pub username answer-chan)
+      (async/close! answer-chan)
+      qas)
+    (catch Exception e
+      (log/errorf e "Failed to send questions %s to %s" (pr-str questions) username)
+      (log/error "Connection: %s" (pr-str conn))
+      (throw e))))
 
 
 (defn submit-answers [db-conn domain user answers]
-  (log/infof "Submitting % answers to %s for %s" (count answers) domain user)
-  (let [db (d/db db-conn)
-        user-eid (d/q '[:find ?member .
-                        :in $ ?domain ?user
-                        :where
-                        [?team :team/domain ?domain]
-                        [?team :team/members ?member]
-                        [?member :member/name ?user]]
-                      db domain user)
-        tx (for [answer answers]
-             {:db/id (d/tempid :db.part/user)
-              :answer/author user-eid
-              :answer/text (:answer answer)
-              :answer/ts (:ts answer)
-              :question/_answers (:question-id answer)})]
-    @(d/transact db-conn tx)
-    (log/infof "Successfully Submitted % answers to %s for %s" (count answers) domain user)))
+  (try
+    (log/infof "Submitting % answers to %s for %s" (count answers) domain user)
+    (let [db (d/db db-conn)
+          user-eid (d/q '[:find ?member .
+                          :in $ ?domain ?user
+                          :where
+                          [?team :team/domain ?domain]
+                          [?team :team/members ?member]
+                          [?member :member/name ?user]]
+                        db domain user)
+          tx (for [answer answers]
+               {:db/id (d/tempid :db.part/user)
+                :answer/author user-eid
+                :answer/text (:answer answer)
+                :answer/ts (:ts answer)
+                :question/_answers (:question-id answer)})]
+      @(d/transact db-conn tx)
+      (log/infof "Successfully Submitted % answers to %s for %s" (count answers) domain user))
+    (catch Exception e
+      (log/errorf e "Failed to submit answers %s for domain %s and user %s"
+                  (pr-str answers) domain user)
+      (throw e))))
 
 (defjob QuestionnaireJob [job-data]
-  (let [{:strs [domain db-conn]} (conversion/from-job-data job-data)
+  (try
+    (let [{:strs [domain db-conn]} (conversion/from-job-data job-data)
         _ (log/info "Scheduled job started for" domain)
         db (d/db db-conn)
         token (:team/token (d/entity db [:team/domain domain]))
@@ -191,7 +208,10 @@
             (submit-answers db-conn domain user answers)))
           ((:shutdown-fn conn)))
       (do (log/infof "Skipping questionnaire for %s (%s users, %s questions and the token is %s"
-                     domain (count users) (count questions) token)))))
+                     domain (count users) (count questions) token))))
+    (catch Exception e
+      (log/errorf e "Questionnaire job failed")
+      (throw e))))
 
 (defn schedule-questionnaire-job [scheduler db-conn domain cron-string]
   (let [job (jobs/build
