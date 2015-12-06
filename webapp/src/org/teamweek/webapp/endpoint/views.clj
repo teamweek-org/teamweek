@@ -54,7 +54,7 @@
          [:h1 "Welcome " [:span (or (:team/name data)
                                     (:team/domain data))] ]]
         [:div
-         "Welcome to your team page. Here you can set the schedule for the questionnaire as well as the list of users you want to send the questions to. The \"Cron string\" is only meant for testing and will be removed in a future release"]
+         "Welcome to your team page. Here you can set the schedule for the questionnaire as well as the list of users you want to send the questions to.<br><em>Note: The Cron expression is only meant for testing and will be removed in a future release</em>"]
         [:div
          (form/form-to
           {:class "pure-form pure-form-stacked"}
@@ -63,15 +63,14 @@
           [:div.pure-control-group
            (if (map? schedule)
             (concat (for [[val checked? text] (:days schedule)]
-                      (list
-                       (form/check-box val checked? val)
-                       (form/label val text)))
+                      [:label.pure-checkbox {:for "val"}
+                       [:input {:type "checkbox" :value val :id val :name val :checked checked?} text]])
                     [(form/label "hr" "Hour: ")
                      (form/drop-down "hr" (map str (range 24)) (:hr schedule))
 
-                     (form/label "schedule_cron" "Cron string:")
+                     (form/label "schedule_cron" "Cron expression")
                      (form/text-field "schedule_cron" "")])
-            (list (form/label "schedule_cron" "Cron string (use a cron string like '0 0 12 ? * FRI *' to get the checkboxes back):")
+            (list (form/label "schedule_cron" "Cron expression (use a cron expression like <pre>0 0 12 ? * FRI *</pre> to get the checkboxes back):")
                   (form/text-field "schedule_cron" schedule)))]
           (form/label "members" "Members:")
           (form/text-area {:style "width: 100%; height: 150px;"}
