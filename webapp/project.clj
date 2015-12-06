@@ -6,6 +6,7 @@
                  [com.stuartsierra/component "0.3.0"]
                  [compojure "1.4.0"]
                  [duct "0.5.6"]
+                 [hiccup "1.0.5"]
                  [environ "1.0.1"]
                  [meta-merge "0.1.1"]
                  [ring "1.4.0"]
