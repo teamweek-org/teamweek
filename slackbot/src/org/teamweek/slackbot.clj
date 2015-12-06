@@ -1,5 +1,6 @@
 (ns org.teamweek.slackbot
   (:require [clojure.core.async :as async]
+            [clojure.string :as str]
             [datomic.api :as d]
             [aleph.http :as http]
             [manifold.stream :as stream]
@@ -243,25 +244,35 @@
                                         schedule))
         (do (log/info "Skipping scheduling for" domain))))))
 
-(defn schedule-new [schduler db-before db-after]
+(defn schedule-new [scheduler db-conn db-before db-after]
   (let [new-domains (d/q '[:find [?new-domains ...]
                            :in $db-before $db-after
                            :where
                            [$db-after ?team :team/domain ?new-domains]
                            [(missing? $db-before ?team :team/domain)]]
                          db-before db-after)]
-    (prn "New domains:" new-domains)))
+    (when-not (empty? new-domains)
+      (log/info "New domains to schedule" (str/join ", " new-domains)))
+    (doseq [domain new-domains]
+      (if-let [schedule (:team/schedule (d/entity db-after [:team/domain domain]))]
+        (do (log/infof "Scheduling new domain %s with cron %s" domain schedule)
+            (schedule-questionnaire-job scheduler db-conn domain schedule))
+        (do (log/infof "Skipping scheduler for domain %s" domain))))))
 
-(defn schedule-removed [scheduler db-before db-after]
+(defn schedule-removed [scheduler db-conn db-before db-after]
   (let [removed-domains (d/q '[:find [?removed-domains ...]
                                :in $ $db-after
                                :where
                                [$ ?team :team/domain ?removed-domains]
                                [(missing? $db-after ?team :team/domain)]]
                              db-before db-after)]
-    (prn "Removed domains:" removed-domains)))
+    (when-not (empty? removed-domains)
+      (log/info "Domains removed" (str/join ", " removed-domains)))
+    (doseq [domain removed-domains]
+      (log/info "Unscheduling" domain)
+      (scheduler/delete-job scheduler (jobs/key (str "jobs." domain))))))
 
-(defn schedule-updates [scheduler db-before db-after]
+(defn schedule-updates [scheduler db-conn db-before db-after]
   (let [updated-crons (d/q '[:find ?domain ?schedule-after
                              :in $db-before $db-after
                              :where
@@ -270,7 +281,15 @@
                              [$db-after  ?team :team/schedule ?schedule-after]
                              [(not= ?schedule-before ?schedule-after)]]
                            db-before db-after)]
-    (prn "Updated crons:" updated-crons)))
+    (when-not (empty? updated-crons)
+      (log/info "Updated schedules" (pr-str updated-crons)))
+    (doseq [[domain new-schedule] updated-crons]
+      (log/info "Unscheduling" domain)
+      (scheduler/delete-job scheduler (jobs/key (str "jobs." domain)))
+      (if-not (empty? new-schedule)
+        (do (log/infof "Scheduling domain %s with schedule %s" domain new-schedule)
+            (schedule-questionnaire-job scheduler db-conn domain new-schedule))
+        (do (log/info "Skipping scheduler for domain" domain))))))
 
 (defn listen-for-team-updates [scheduler db-conn]
   (let [queue (d/tx-report-queue db-conn)]
@@ -278,13 +297,9 @@
       (let [{:keys [db-before
                     db-after
                     tx-data]} (.take queue)]
-        ;; No figure out if we need to
-        ;; add/remove a scheduled job
-        ;; or update the cron job for some
-        (schedule-new scheduler db-before db-after)
-        (schedule-removed scheduler db-before db-after)
-        (schedule-updates scheduler db-before db-after)
-        (println "============================================")))))
+        (schedule-new scheduler db-conn db-before db-after)
+        (schedule-removed scheduler db-conn db-before db-after)
+        (schedule-updates scheduler db-conn db-before db-after)))))
 
 (defn -main [db-uri]
   (log/merge-config! {:level :info
