@@ -12,7 +12,10 @@
             [clojurewerkz.quartzite.conversion :as conversion]
             [taoensso.timbre :as log]
             [byte-streams])
+  (:import java.util.Date)
   (:gen-class))
+
+(def config (atom {}))
 
 (defn connect-url [token]
   (str "https://slack.com/api/rtm.start?token=" token))
@@ -165,8 +168,11 @@
                 :answer/author user-eid
                 :answer/text (:answer answer)
                 :answer/ts (:ts answer)
-                :question/_answers (:question-id answer)})]
+                :question/_answers (:question-id answer)})
+          es-uri (:es-uri@config)]
       @(d/transact db-conn tx)
+      (doseq [answer answers]
+        @(http/post (str es-uri domain "/answer/") {:body (json/encode {:text (:answer answer) :created (:ts answer) :member user})}))
       (log/infof "Successfully Submitted %s answers to %s for %s" (count answers) domain user))
     (catch Exception e
       (log/errorf e "Failed to submit answers %s for domain %s and user %s"
@@ -307,10 +313,11 @@
         (schedule-removed scheduler db-conn db-before db-after)
         (schedule-updates scheduler db-conn db-before db-after)))))
 
-(defn -main [db-uri]
+(defn -main [db-uri es-uri]
   (log/merge-config! {:level :info
                       :output-fn (partial log/default-output-fn {:stacktrace-fonts {}})})
   (log/info "Starting the slackbot with" db-uri)
+  (swap! config assoc "es-uri" es-uri "db-uri" db-uri)
   (let [scheduler (scheduler/start (scheduler/initialize))
         db-conn (d/connect db-uri)]
     (init-start-jobs scheduler db-conn)
@@ -326,7 +333,9 @@
   ;; db stuff
 
   (def db-uri "datomic:free://localhost:4334/teamweek")
-  (-main db-uri)
+  (def es-uri "http://localhost:9200/")
+
+  (-main db-uri es-uri)
 
 
   (d/delete-database db-uri)
