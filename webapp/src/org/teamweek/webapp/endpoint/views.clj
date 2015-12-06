@@ -56,9 +56,12 @@
             (anti-forgery-field)
             (if (map? schedule)
               (concat (for [[val checked? text] (:days schedule)]
-                        (list (form/label val text)
-                              (form/check-box val checked? val)))
-                      [(form/drop-down "hr" (map str (range 24)) (:hr schedule))
+                        (list [:br]
+                              (form/check-box val checked? val)
+                              (form/label val text)))
+                      [[:br]
+                       (form/drop-down "hr" (map str (range 24)) (:hr schedule))
+                       [:br]
                        (form/label "schedule_cron" "Cron string (only for advanced users/testing):")
                        (form/text-field "schedule_cron" "")])
               (list (form/label "schedule_cron" "Cron string (use a cron string like '0 0 12 ? * FRI *' to get the checkboxes back):")
