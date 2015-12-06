@@ -204,10 +204,12 @@
       ;; TODO in parallell, but the job is not finished before all has answered/timeout
       (do
         (log/infof "Sending quesitonnaire for %s (%s users and %s questions)" domain users questions)
-        (doseq [user users]
-          (let [answers (send-questionnaire conn user (sort-by :question/order questions))]
-            (submit-answers db-conn domain user answers)))
-          ((:shutdown-fn conn)))
+        (dorun
+         (pmap (fn [user]
+                 (let [answers (send-questionnaire conn user (sort-by :question/order questions))]
+                   (submit-answers db-conn domain user answers)))
+               users))
+        ((:shutdown-fn conn)))
       (do (log/infof "Skipping questionnaire for %s (%s users, %s questions and the token is %s"
                      domain (count users) (count questions) token))))
     (catch Exception e
