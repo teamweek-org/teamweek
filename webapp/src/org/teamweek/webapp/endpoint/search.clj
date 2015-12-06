@@ -5,6 +5,7 @@
             [clj-http.client :as http]
             [cheshire.core :as json]
             [hiccup.core :refer :all]
+            [hiccup.page :as page]
             [clojure.string :as str]))
 
 
@@ -29,13 +30,22 @@
            (let [team (d/entity db eid)
                  domain (:team/domain team)
                  result (get-results domain q)]
-             (html
-               [:form {:action "/search" :method "get"}
-                [:input {:type "hidden" :name "t" :value t}]
-                [:input {:name "q" :value q}]
-                [:input {:type "submit" :name "submit" :value "Search"}]]
-               [:ul
-                (for [hit (get-in result [:hits :hits])]
-                  [:li (:text (:_source hit))])]))
+             (page/html5
+               [:head
+                [:title "Teamweek - Seach"]
+                (page/include-css "https://cdnjs.cloudflare.com/ajax/libs/pure/0.6.0/pure-min.css")]
+               [:div.pure-g
+                [:div.pure-u-1-3]
+                [:div.pure-u-1-3
+                 [:form {:action "/search" :method "get" :class "pure-form"}
+                  [:fieldset
+                   [:legend "Search"]
+                   [:input {:type "hidden" :name "t" :value t}]
+                   [:input {:name "q" :value q}]
+                   [:input {:type "submit" :name "submit" :value "Search" :class "pure-button pure-button-primary"}]]]
+                 [:div
+                  (for [hit (get-in result [:hits :hits])]
+                    [:div (:text (:_source hit))])]]
+                [:div.pure-u-1-3]]))
            (redirect "/"))
          (redirect "/"))))))
