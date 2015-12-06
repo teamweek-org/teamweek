@@ -121,7 +121,7 @@
                                        :text msg})))
 
 (defn send-questionnaire
-  [conn username questions]
+  [conn token username questions]
   (try
     (send-to-user! conn username
                    (format "Greetings %s. I have a few questions for you." username))
@@ -141,6 +141,9 @@
                         :answer (:text (async/<!! answer-chan))}))
                []
                questions)]
+      (send-to-user! conn username
+                     (format "Thank you for your answers. You can view your teams data now or later at https://teamweek.org/search?t=%s"
+                             token))
       (log/infof "Questionnaire completed for %s. %s questions answered" username (count qas))
       (async/unsub dm-pub username answer-chan)
       (async/close! answer-chan)
@@ -206,7 +209,7 @@
         (log/infof "Sending quesitonnaire for %s (%s users and %s questions)" domain users questions)
         (dorun
          (pmap (fn [user]
-                 (let [answers (send-questionnaire conn user (sort-by :question/order questions))]
+                 (let [answers (send-questionnaire conn token user (sort-by :question/order questions))]
                    (submit-answers db-conn domain user answers)))
                users))
         ((:shutdown-fn conn)))
