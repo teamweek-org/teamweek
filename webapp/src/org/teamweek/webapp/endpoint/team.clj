@@ -28,31 +28,34 @@
 
 (defn create-team
   "Creates a team based on a token"
-  [req]
-  (if-let [token (get (:form-params req) "token")]
-    (let [conn (:conn req)
-          team-data (get-team-data token)
-          team-id (d/tempid :db.part/user)
-          team-tx {:db/id team-id
-                   :team/domain (:domain team-data)
-                   :team/name (:name team-data)
-                   :team/schedule "0 0 13 ? * FRI *" ; every FRI at 13:00
-                   :team/members (for [{:keys [email name]} (:members team-data)]
-                                   {:member/name name
-                                    :member/email email})
-                   :team/questions [{:question/text "What have you accomplished this week?"
-                                     :question/order 1}
-                                    {:question/text "What you commit to do next week?"
-                                     :question/order 2}]}
-          ]
-      @(d/transact conn [team-tx]))
-    {:status 400}))
+  [conn token]
+  (let [team-data (get-team-data token)
+        team-id (d/tempid :db.part/user)
+        team-tx {:db/id team-id
+                 :team/domain (:domain team-data)
+                 :team/token token
+                 :team/name (:name team-data)
+                 :team/schedule "0 0 13 ? * FRI *" ; every FRI at 13:00
+                 :team/members (for [{:keys [email name]} (:members team-data)]
+                                 {:member/name name
+                                  :member/email email})
+                 :team/questions [{:question/text "What have you accomplished this week?"
+                                   :question/order 1}
+                                  {:question/text "What you commit to do next week?"
+                                   :question/order 2}]}
+        ]
+    @(d/transact conn [team-tx])))
 
 (defn team-endpoint [config]
   (context "/team" []
    (GET "/" req
      (str ring.middleware.anti-forgery/*anti-forgery-token*))
    (POST "/" req
-     (let [t (create-team req)]
-       (clojure.pprint/pprint t))
-     "Hola")))
+     (if-let [token (get (:form-params req) "token")]
+       (let [db (:db req)
+             conn (:conn req)
+             team (ffirst (d/q '[:find ?e :in $ ?t :where [?e :team/token ?t]] db token))]
+         (if team
+           (pr-str (d/touch (d/entity db team)))
+           (create-team conn token)))
+       {:status 400}))))
