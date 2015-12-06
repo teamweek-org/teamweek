@@ -10,7 +10,6 @@
             [datomic.api :as d]
             [org.teamweek.webapp.endpoint.views :as views]))
 
-
 (defn filter-user-data
   "Extract useful data from a user"
   [usr]
@@ -124,7 +123,8 @@
                (do
                  (create-team conn token team-data)
                  ;; TODO remove hardcoded ES_URI
-                 (http/put (str "http://localhost:9200/" (:domain team-data)) {:body (slurp (io/resource "mappings.json"))})
+                 (http/put (str "http://localhost:9200/" (:domain team-data))
+                           {:body (slurp (io/resource "mappings.json"))})
                  (->
                    (redirect "/team")
                    (assoc-in [:session "teamweek-token"] token)))
