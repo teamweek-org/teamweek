@@ -18,9 +18,10 @@
              [:div {:style "text-align: center;"}
               [:h1 "Welcome to " [:span "Teamweek"]]]
              [:div
-              [:ol
-               [:li "Create a new Slack " [:a {:href "https://my.slack.com/services/new/bot" :target "_blank"} [:em "Bot User"]] " and copy the token"]
-               [:li "Paste the token below to sign in"]]]
+              "<ol>
+                <li>Create a new Slack <a href=\"https://my.slack.com/services/new/bot\" target=\"_blank\"><em>Bot User</em></a> and copy the token</li>
+                <li>Paste the token below to sign in</li>
+               </ol>"]
              [:form {:action "/team" :method "POST" :class "pure-form pure-form-stacked"}
               [:fieldset
                [:legen "Join Teamweek"]
