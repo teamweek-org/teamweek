@@ -141,7 +141,7 @@
                         :question-id (:db/id question)
                         :answer (:text (async/alt!!
                                          answer-chan ([text] text)
-                                         (async/timeout ten-minutes) ([_] "")))}))
+                                         (async/timeout ten-minutes) ([_] {:text ""})))}))
                []
                questions)]
       (send-to-user! conn username
@@ -376,8 +376,7 @@
   (def every-minute "0 * * * * ?")
 
   @(d/transact db-conn [(create-team "teamweek-org" slack-token every-minute
-                                     [["jonas" "jonas@gmail"]
-                                      ["notauser" "notauser"]]
+                                     [["jonas" "jonas@gmail"]]
                                      [{:text "How are you today?"
                                        :order 1}
                                       {:text "What are your plans for tomorrow?"
