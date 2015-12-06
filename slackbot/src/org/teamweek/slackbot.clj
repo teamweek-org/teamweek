@@ -8,6 +8,7 @@
             [clojurewerkz.quartzite.jobs :as jobs :refer (defjob)]
             [clojurewerkz.quartzite.triggers :as triggers]
             [clojurewerkz.quartzite.schedule.cron :as cron]
+            [clojurewerkz.quartzite.conversion :as conversion]
             [byte-streams])
   (:gen-class))
 
@@ -53,8 +54,6 @@
       (throw (ex-info "Unable to connect" first-msg)))
     (keep-alive conn shutdown?)
     conn))
-
-
 
 (defn connect [token]
   (let [conn-data (-> (str "https://slack.com/api/rtm.start?token=" token)
@@ -124,13 +123,13 @@
         dm-sub (async/sub dm-pub username answer-chan)
         qas (reduce
              (fn [question-answers question]
-               (send-to-user! conn username question)
+               (send-to-user! conn username (:question/text question))
                (conj question-answers
                      {:ts (java.util.Date.)
                       :team (:name (:team conn))
                       :domain (:domain (:team conn))
                       :user username
-                      :question question
+                      :question-id (:db/id question)
                       :answer (:text (async/<!! answer-chan))}))
              []
              questions)]
@@ -143,9 +142,9 @@
   ;; TODO insert into datomic db
   (let [db (d/db db-conn)
         user-eid (d/q '[:find ?member .
-                        :in $ domain user
+                        :in $ ?domain ?user
                         :where
-                        [?team :team/domain domain]
+                        [?team :team/domain ?domain]
                         [?team :team/members ?member]
                         [?member :member/name ?user]]
                       db domain user)
@@ -154,11 +153,13 @@
               :answer/author user-eid
               :answer/text (:answer answer)
               :answer/ts (:ts answer)
-              :_question/answers (:question answer)})]
+              :question/_answers (:question-id answer)})]
+    (prn tx)
     @(d/transact db-conn tx)))
 
-(defjob QuestionnaireJob [{:keys [domain db-conn]}]
-  (let [db (d/db db-conn)
+(defjob QuestionnaireJob [job-data]
+  (let [{:strs [domain db-conn]} (conversion/from-job-data job-data)
+        db (d/db db-conn)
         token (:team/token (d/entity db [:team/domain domain]))
         users (d/q '[:find [?name ...]
                      :in $ ?domain
@@ -167,7 +168,7 @@
                      [?team :team/members ?member]
                      [?member :member/name ?name]]
                    db domain)
-        questions (d/q '[:find (pull ?question [:db/id :question/text])
+        questions (d/q '[:find [(pull ?question [:db/id :question/text :question/order]) ...]
                          :in $ ?domain
                          :where
                          [?team :team/domain ?domain]
@@ -180,8 +181,9 @@
     (if conn
       ;; TODO in parallell, but the job is not finished before all has answered/timeout
       (doseq [user users]
-        (let [answers (send-questionnaire conn user questions)]
-          (submit-answers db-conn domain user answers)))
+        (let [answers (send-questionnaire conn user (sort-by :question/order questions))]
+          (submit-answers db-conn domain user answers))
+        ((:shutdown-fn conn)))
       (do (println "Nothing to do")
           (println "Token" token) ;; TODO proper logging!
           (println "Users" users)
@@ -198,18 +200,21 @@
                  (triggers/with-schedule
                    (cron/schedule
                     (cron/cron-schedule cron-string))))]
-    (scheduler/schedule scheduler job trigger)))
+    (scheduler/schedule scheduler job trigger)
+    (println "Scheduler is running")))
 
 (defn init-start-jobs [scheduler db-conn]
-  (doseq [db (d/db db-conn)
-          {:keys [domain schedule]} (d/q '[:find (pull ?team [:team/domain :team/schedule])
-                                           :where
-                                           [?team :team/domain]]
-                                         db)]
-    (schedule-questionnaire-job scheduler
-                                db-conn
-                                domain
-                                schedule)))
+  (let [db (d/db db-conn)]
+    (doseq [{:keys [team/domain team/schedule]}
+            (d/q '[:find [(pull ?team [:team/domain :team/schedule]) ...]
+                   :where
+                   [?team :team/domain]]
+                 db)]
+      (println "Scheduling" domain schedule)
+      (schedule-questionnaire-job scheduler
+                                   db-conn
+                                   domain
+                                   schedule))) )
 
 (defn schedule-new [schduler db-before db-after]
   (let [new-domains (d/q '[:find [?new-domains ...]
@@ -276,20 +281,28 @@
   ;; db stuff
 
   (def db-uri "datomic:free://localhost:4334/teamweek")
+  (-main db-uri)
+
 
   (d/delete-database db-uri)
   (d/create-database db-uri)
 
   (def db-conn (d/connect db-uri))
 
+  (d/q '[:find (pull ?answer [:answer/author :answer/text :answer/ts])
+         :where
+         [?answer :answer/text]]
+       (d/db db-conn))
+
+
   (d/transact db-conn (read-string (slurp "../webapp/resources/schema.edn")))
 
   (future (listen-for-team-updates nil db-conn))
 
 
-  (defn create-team [team-name slack-token schedule-string members questions]
+  (defn create-team [domain slack-token schedule-string members questions]
     {:db/id (d/tempid :db.part/user)
-     :team/domain team-name
+     :team/domain domain
      :team/token slack-token
      :team/schedule schedule-string
      :team/members (for [[name email] members]
@@ -298,22 +311,16 @@
      :team/questions (for [text questions]
                        {:question/text text})})
 
-  (d/transact db-conn [(create-team "abc" "fdiosjfsodij" "* * * * *"
-                                    [["jonas" "jonas@gmail"]]
-                                    ["Who are you?"
-                                     "Where are you?"
-                                     "Where are you going?"])])
+  (def every-minute "0 * * * * ?")
 
-  (d/transact db-conn [(create-team "def" "fdsoifjsidojf" "* * * * *"
-                                    [["ivan" "ivan@gmail"]
-                                     ["john" "doe@gmail"]]
-                                    ["What is your age?"])])
+  (d/transact db-conn [(create-team "teamweek-org" slack-token every-minute
+                                    [#_["jonas" "jonas@gmail"]
+                                     ["ivan" "ivan@gmail"]]
+                                    ["How are you today?"
+                                     "What are your plans for tomorrow?"])])
 
-  (d/transact db-conn [[:db.fn/retractEntity [:team/domain "def"]]])
+  (d/transact db-conn [[:db.fn/retractEntity [:team/domain "teamweek-org"]]])
 
-  (d/transact db-conn [[:db/add [:team/domain "abc"] :team/schedule "* * F * *"]])
-
-  (d/pull (d/db db-conn) [:team/domain :team/schedule] [:team/domain "abc"])
 
 
 
