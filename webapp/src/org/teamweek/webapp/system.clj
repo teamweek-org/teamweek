@@ -11,6 +11,7 @@
             [ring.middleware.webjars :refer [wrap-webjars]]
             [ring.middleware.params :refer [wrap-params]]
             [org.teamweek.webapp.middleware.datomic :refer [wrap-datomic]]
+            [org.teamweek.webapp.endpoint.index :refer [index-endpoint]]
             [org.teamweek.webapp.endpoint.team :refer [team-endpoint]]
             [org.teamweek.webapp.endpoint.search :refer [search-endpoint]]))
 
@@ -23,17 +24,19 @@
                       [wrap-params]]
          :not-found  (io/resource "org/teamweek/webapp/errors/404.html")
          :defaults   (meta-merge site-defaults {:static {:resources "org/teamweek/webapp/public"}})
-         :aliases    {"/" "/index.html"}}})
+         :aliases    {"/" "/index"}}})
 
 (defn new-system [config]
   (let [config (meta-merge base-config config)]
     (-> (component/system-map
          :app  (handler-component (:app config))
          :http (jetty-server (:http config))
+         :index (endpoint-component index-endpoint)
          :team (endpoint-component team-endpoint)
          :search (endpoint-component search-endpoint))
         (component/system-using
          {:http [:app]
-          :app  [:team :search]
+          :app  [:index :team :search]
+          :index []
           :team []
           :search []}))))
