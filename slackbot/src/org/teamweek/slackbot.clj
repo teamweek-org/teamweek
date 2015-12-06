@@ -323,7 +323,7 @@
   (log/merge-config! {:level :info
                       :output-fn (partial log/default-output-fn {:stacktrace-fonts {}})})
   (log/info "Starting the slackbot with" db-uri)
-  (swap! config assoc "es-uri" es-uri "db-uri" db-uri)
+  (swap! config assoc :es-uri es-uri :db-uri db-uri)
   (let [scheduler (scheduler/start (scheduler/initialize))
         db-conn (d/connect db-uri)]
     (init-start-jobs scheduler db-conn)
