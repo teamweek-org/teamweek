@@ -21,7 +21,7 @@
               "<p>Our aim is to provide an alternative to <em>status update</em> meetings inspired by
                <a href=\"http://blog.idonethis.com/google-snippets-internal-tool/\" target=\"_target\">Google Snippets</a>.
                Every week your team gets asked a couple of simple questions:</p>\n
-               <ul>\n<li>What have you achived this week?</li>\n<li>What do you commit to do next week?</li>\n</ul>
+               <ul>\n<li>What have you achieved this week?</li>\n<li>What do you commit to do next week?</li>\n</ul>
                \n<p>The team replies and those get stored in a database that is searchable by any team member,
                 providing a more transparent way of communicating progress. Using hashtags you can filter for the
                 most recent updates for those projects you’re interested in.</p>\n<h2>

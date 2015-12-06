@@ -4,7 +4,7 @@ Our aim is to provide an alternative to _status update_ meetings inspired by
 [Google Snippets](http://blog.idonethis.com/google-snippets-internal-tool/).
 Every week your team gets asked a couple of simple questions:
 
- * What have you achived this week?
+ * What have you achieved this week?
  * What do you commit to do next week?
 
 The team replies and those get stored in a database that is searchable by any
