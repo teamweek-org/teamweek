@@ -44,8 +44,9 @@
                    [:input {:name "q" :value q}]
                    [:input {:type "submit" :name "submit" :value "Search" :class "pure-button pure-button-primary"}]]]
                  [:div
+                  [:div (str (get-in result [:hits :total]) " results")]
                   (for [hit (get-in result [:hits :hits])]
-                    [:div (:text (:_source hit))])]]
+                    [:div {:style "margin-top: 20px"} (:text (:_source hit))])]]
                 [:div.pure-u-1-3]]))
            (redirect "/"))
          (redirect "/"))))))
