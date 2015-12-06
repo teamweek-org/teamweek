@@ -186,38 +186,40 @@
 
 (defjob QuestionnaireJob [job-data]
   (try
-    (let [{:strs [domain db-conn]} (conversion/from-job-data job-data)
-        _ (log/info "Scheduled job started for" domain)
-        db (d/db db-conn)
-        token (:team/token (d/entity db [:team/domain domain]))
-        users (d/q '[:find [?name ...]
-                     :in $ ?domain
-                     :where
-                     [?team :team/domain ?domain]
-                     [?team :team/members ?member]
-                     [?member :member/name ?name]]
-                   db domain)
-        questions (d/q '[:find [(pull ?question [:db/id :question/text :question/order]) ...]
-                         :in $ ?domain
-                         :where
-                         [?team :team/domain ?domain]
-                         [?team :team/questions ?question]]
-                       db domain)
-        conn (when (and token
-                        (not-empty users)
-                        (not-empty questions))
-               (connect token))]
-    (if conn
-      (do
-        (log/infof "Sending quesitonnaire for %s (%s users and %s questions)" domain users questions)
-        (dorun
-         (pmap (fn [user]
-                 (let [answers (send-questionnaire conn token user (sort-by :question/order questions))]
-                   (submit-answers db-conn domain user answers)))
-               users))
-        ((:shutdown-fn conn)))
-      (do (log/infof "Skipping questionnaire for %s (%s users, %s questions and the token is %s"
-                     domain (count users) (count questions) token))))
+    (let [{:strs [domain db-conn scheduler]} (conversion/from-job-data job-data)
+          _ (when (scheduler/currently-executing-job? scheduler (jobs/key (str "jobs." domain)))
+              (throw (ex-info "Job is still running" {:domain domain})))
+          _ (log/info "Scheduled job started for" domain)
+          db (d/db db-conn)
+          token (:team/token (d/entity db [:team/domain domain]))
+          users (d/q '[:find [?name ...]
+                       :in $ ?domain
+                       :where
+                       [?team :team/domain ?domain]
+                       [?team :team/members ?member]
+                       [?member :member/name ?name]]
+                     db domain)
+          questions (d/q '[:find [(pull ?question [:db/id :question/text :question/order]) ...]
+                           :in $ ?domain
+                           :where
+                           [?team :team/domain ?domain]
+                           [?team :team/questions ?question]]
+                         db domain)
+          conn (when (and token
+                          (not-empty users)
+                          (not-empty questions))
+                 (connect token))]
+      (if conn
+        (do
+          (log/infof "Sending quesitonnaire for %s (%s users and %s questions)" domain users questions)
+          (dorun
+           (pmap (fn [user]
+                   (let [answers (send-questionnaire conn token user (sort-by :question/order questions))]
+                     (submit-answers db-conn domain user answers)))
+                 users))
+          ((:shutdown-fn conn)))
+        (do (log/infof "Skipping questionnaire for %s (%s users, %s questions and the token is %s"
+                       domain (count users) (count questions) token))))
     (catch Exception e
       (log/errorf e "Questionnaire job failed")
       (throw e))))
@@ -226,7 +228,8 @@
   (let [job (jobs/build
              (jobs/of-type QuestionnaireJob)
              (jobs/using-job-data {:domain domain
-                                   :db-conn db-conn})
+                                   :db-conn db-conn
+                                   :scheduler scheduler})
              (jobs/with-identity (jobs/key (str "jobs." domain))))
         trigger (triggers/build
                  (triggers/with-identity (triggers/key (str "triggers." domain)))
