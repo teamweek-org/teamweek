@@ -124,6 +124,7 @@
         dm-sub (async/sub dm-pub username answer-chan)
         qas (reduce
              (fn [question-answers question]
+               (log/infof "Sending \"%s\" to %s" (:question/text question) username)
                (send-to-user! conn username (:question/text question))
                (conj question-answers
                      {:ts (java.util.Date.)
@@ -134,13 +135,14 @@
                       :answer (:text (async/<!! answer-chan))}))
              []
              questions)]
+    (log/infof "Questionnaire completed for %s. %s questions answered" username (count qas))
     (async/unsub dm-pub username answer-chan)
     (async/close! answer-chan)
     qas))
 
 
 (defn submit-answers [db-conn domain user answers]
-  ;; TODO insert into datomic db
+  (log/infof "Submitting % answers to %s for %s" (count answers) domain user)
   (let [db (d/db db-conn)
         user-eid (d/q '[:find ?member .
                         :in $ ?domain ?user
@@ -155,11 +157,12 @@
               :answer/text (:answer answer)
               :answer/ts (:ts answer)
               :question/_answers (:question-id answer)})]
-    (prn tx)
-    @(d/transact db-conn tx)))
+    @(d/transact db-conn tx)
+    (log/infof "Successfully Submitted % answers to %s for %s" (count answers) domain user)))
 
 (defjob QuestionnaireJob [job-data]
   (let [{:strs [domain db-conn]} (conversion/from-job-data job-data)
+        _ (log/info "Scheduled job started for" domain)
         db (d/db db-conn)
         token (:team/token (d/entity db [:team/domain domain]))
         users (d/q '[:find [?name ...]
@@ -181,14 +184,14 @@
                (connect token))]
     (if conn
       ;; TODO in parallell, but the job is not finished before all has answered/timeout
-      (do (doseq [user users]
-            (let [answers (send-questionnaire conn user (sort-by :question/order questions))]
-              (submit-answers db-conn domain user answers)))
+      (do
+        (log/infof "Sending quesitonnaire for %s (%s users and %s questions)" domain users questions)
+        (doseq [user users]
+          (let [answers (send-questionnaire conn user (sort-by :question/order questions))]
+            (submit-answers db-conn domain user answers)))
           ((:shutdown-fn conn)))
-      (do (println "Nothing to do")
-          (println "Token" token) ;; TODO proper logging!
-          (println "Users" users)
-          (println "Questions" questions)))))
+      (do (log/infof "Skipping questionnaire for %s (%s users, %s questions and the token is %s"
+                     domain (count users) (count questions) token)))))
 
 (defn schedule-questionnaire-job [scheduler db-conn domain cron-string]
   (let [job (jobs/build
@@ -202,20 +205,23 @@
                    (cron/schedule
                     (cron/cron-schedule cron-string))))]
     (scheduler/schedule scheduler job trigger)
-    (println "Scheduler is running")))
+    (log/info "Scheduler for" domain "is running with schedule" cron-string)))
 
 (defn init-start-jobs [scheduler db-conn]
+  (log/info "Starting the initial schedulers")
   (let [db (d/db db-conn)]
     (doseq [{:keys [team/domain team/schedule]}
             (d/q '[:find [(pull ?team [:team/domain :team/schedule]) ...]
                    :where
                    [?team :team/domain]]
                  db)]
-      (println "Scheduling" domain schedule)
-      (schedule-questionnaire-job scheduler
-                                   db-conn
-                                   domain
-                                   schedule))) )
+      (if schedule
+        (do (log/info "Scheduling" domain "with schedule" schedule)
+            (schedule-questionnaire-job scheduler
+                                        db-conn
+                                        domain
+                                        schedule))
+        (do (log/info "Skipping scheduling for" domain))))))
 
 (defn schedule-new [schduler db-before db-after]
   (let [new-domains (d/q '[:find [?new-domains ...]
@@ -263,6 +269,7 @@
 (defn -main [db-uri]
   (log/merge-config! {:level :info
                       :output-fn (partial log/default-output-fn {:stacktrace-fonts {}})})
+  (log/info "Starting the slackbot with" db-uri)
   (let [scheduler (scheduler/start (scheduler/initialize))
         db-conn (d/connect db-uri)]
     (init-start-jobs scheduler db-conn)
