@@ -1,6 +1,7 @@
 (ns org.teamweek.webapp.endpoint.team
   (:require [compojure.core :refer :all]
             [ring.util.response :refer :all]
+            [ring.middleware.flash :refer [flash-response]]
             [clj-http.client :as http]
             [cheshire.core :refer [parse-string]]
             [datomic.api :as d]
@@ -29,10 +30,8 @@
 
 (defn create-team
   "Creates a team based on a token"
-  [conn token]
-  (let [team-data (get-team-data token)
-        team-id (d/tempid :db.part/user)
-        team-tx {:db/id team-id
+  [conn token team-data]
+  (let [team-tx {:db/id (d/tempid :db.part/user)
                  :team/domain (:domain team-data)
                  :team/token token
                  :team/name (:name team-data)
@@ -43,20 +42,33 @@
                  :team/questions [{:question/text "What have you accomplished this week?"
                                    :question/order 1}
                                   {:question/text "What you commit to do next week?"
-                                   :question/order 2}]}
-        ]
+                                   :question/order 2}]}]
     @(d/transact conn [team-tx])))
 
 (defn team-endpoint [config]
   (context "/team" []
     (GET "/" req
-      (views/team-page req))
+      (if-let [token (get (:session req) "teamweek-token")]
+        (views/team-page req)
+        (redirect "/")))
+
    (POST "/" req
      (if-let [token (get (:form-params req) "token")]
        (let [db (:db req)
              conn (:conn req)
              team (ffirst (d/q '[:find ?e :in $ ?t :where [?e :team/token ?t]] db token))]
          (if team
-           (pr-str (d/touch (d/entity db team)))
-           (create-team conn token)))
-       {:status 400}))))
+           (-> (redirect "/team")
+               (assoc-in [:session "teamweek-token"] token))
+           (let [team-data (get-team-data token)]
+             (if (:domain team-data)
+               (do
+                 (create-team conn token team-data)
+                 (->
+                   (redirect "/team")
+                   (assoc-in [:session "teamweek-token"] token)))
+               (do
+                 ;; How does this work?
+                 ;; (flash-response {:flash "Invalid token"} req)
+                 (redirect "/"))))))
+       (redirect "/")))))
