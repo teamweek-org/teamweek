@@ -1,5 +1,7 @@
 # Teamweek
 
+**ClojureCup 2015**
+
 Our aim is to provide an alternative to _status update_ meetings inspired by
 [Google Snippets](http://blog.idonethis.com/google-snippets-internal-tool/).
 Every week your team gets asked a couple of simple questions:
